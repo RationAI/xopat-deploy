@@ -21,7 +21,6 @@ a = Analysis(
     datas=[
         ('wsi_service', 'wsi_service'),
         ('wsi_service_base_plugins', 'wsi_service_base_plugins'),
-        ('.env', '.'),
     ],
     hiddenimports=[
         'uvicorn',
