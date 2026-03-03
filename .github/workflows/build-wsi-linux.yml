@@ -1,0 +1,65 @@
+name: Build WSI-Service Linux
+
+on:
+  push:
+    tags:
+      - 'wsi-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. wsi-v1.0.0)'
+        required: true
+        type: string
+      ref:
+        description: 'Branch to build from (e.g. develop)'
+        required: false
+        default: 'develop'
+        type: string
+
+jobs:
+  build-linux:
+    name: Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          submodules: false
+
+      - name: Checkout WSI-Service submodule
+        run: git submodule update --init --recursive external/wsi-service
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run build script
+        run: |
+          chmod +x scripts/linux/build_wsi_service.sh
+          scripts/linux/build_wsi_service.sh
+
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package artifact
+        run: |
+          zip -r "wsi_service_binary_linux_${{ steps.tag.outputs.value }}.zip" \
+            dist/wsi_service_binary/
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: ${{ steps.tag.outputs.value }}
+          files: wsi_service_binary_linux_*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
