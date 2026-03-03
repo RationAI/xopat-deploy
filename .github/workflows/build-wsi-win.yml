@@ -10,6 +10,11 @@ on:
         description: 'Release tag (e.g. wsi-v1.0.0)'
         required: true
         type: string
+      ref:
+        description: 'Branch to build from (e.g. develop)'
+        required: false
+        default: 'develop'
+        type: string
 
 jobs:
   build-windows:
@@ -20,6 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
           submodules: false
 
       - name: Checkout WSI-Service submodule
