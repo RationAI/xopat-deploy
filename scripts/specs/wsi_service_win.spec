@@ -2,6 +2,7 @@
 import os
 import glob
 import imagecodecs
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
@@ -23,18 +24,11 @@ a = Analysis(
         ('wsi_service_base_plugins', 'wsi_service_base_plugins'),
     ],
     hiddenimports=[
+        *collect_submodules('wsi_service'),
+        *collect_submodules('wsi_service_base_plugins'),
         'uvicorn',
         'fastapi',
         'starlette',
-        'wsi_service.api.v3.integrations.disable_auth',
-        'wsi_service.plugins',
-        'wsi_service.simple_mapper',
-        'wsi_service.paths_mapper',
-        'wsi_service_base_plugins.openslide',
-        'wsi_service_base_plugins.pil',
-        'wsi_service_base_plugins.tifffile',
-        'wsi_service_base_plugins.tiffslide',
-        'wsi_service_base_plugins.wsidicom',
         'wsi_service_plugin_openslide',
         'wsi_service_plugin_pil',
         'wsi_service_plugin_tifffile',
