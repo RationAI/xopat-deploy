@@ -52,8 +52,8 @@ jobs:
 
       - name: Package artifact
         run: |
-          zip -r "wsi_service_binary_linux_${{ steps.tag.outputs.value }}.zip" \
-            dist/wsi_service_binary/
+          cd dist/wsi_service_binary
+          zip -r "../../wsi_service_binary_linux_${{ steps.tag.outputs.value }}.zip" .
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
