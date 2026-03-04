@@ -1,0 +1,80 @@
+name: Build Installer Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Installer tag (e.g. installer-v1.0.0)'
+        required: true
+        type: string
+      wsi_tag:
+        description: 'WSI-Service tag (e.g. wsi-v1.0.0)'
+        required: true
+        type: string
+      xopat_tag:
+        description: 'xOpat tag (e.g. xopat-v1.0.0)'
+        required: true
+        type: string
+      ref:
+        description: 'Branch to build from (e.g. develop)'
+        required: false
+        default: 'develop'
+        type: string
+
+jobs:
+  build-installer-windows:
+    name: Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Download WSI-Service binary
+        shell: pwsh
+        run: |
+          $url = "https://github.com/RationAI/xopat-deploy/releases/download/${{ inputs.wsi_tag }}/wsi_service_binary_windows_${{ inputs.wsi_tag }}.zip"
+          Invoke-WebRequest $url -OutFile wsi.zip `
+            -Headers @{ Authorization = "token ${{ secrets.GITHUB_TOKEN }}" }
+          Expand-Archive wsi.zip -DestinationPath installer_win\packages\xopat\data\wsi-service
+          Remove-Item wsi.zip
+
+      - name: Download xOpat binary
+        shell: pwsh
+        run: |
+          $url = "https://github.com/RationAI/xopat-deploy/releases/download/${{ inputs.xopat_tag }}/xopat_windows_${{ inputs.xopat_tag }}.zip"
+          Invoke-WebRequest $url -OutFile xopat.zip `
+            -Headers @{ Authorization = "token ${{ secrets.GITHUB_TOKEN }}" }
+          Expand-Archive xopat.zip -DestinationPath installer_win\packages\xopat\data\xopat
+          Remove-Item xopat.zip
+
+      - name: Copy .env template
+        shell: pwsh
+        run: |
+          Copy-Item envs\wsi_service.env installer_win\packages\xopat\data\wsi-service\.env
+
+      - name: Install Qt IFW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.0'
+          tools: 'tools_ifw'
+          cache: true
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ifw = "$env:RUNNER_WORKSPACE\Qt\Tools\QtInstallerFramework\4.10\bin\binarycreator.exe"
+          & $ifw -c installer_win\config\config.xml `
+                 -p installer_win\packages `
+                 "xOpat-Installer-Windows-${{ inputs.tag }}.exe"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          files: xOpat-Installer-Windows-*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
