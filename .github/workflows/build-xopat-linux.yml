@@ -1,0 +1,72 @@
+name: Build xOpat Linux
+
+on:
+  push:
+    tags:
+      - 'xopat-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. xopat-v1.0.0)'
+        required: true
+        type: string
+      ref:
+        description: 'Branch to build from (e.g. develop)'
+        required: false
+        default: 'develop'
+        type: string
+
+jobs:
+  build-linux:
+    name: Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          submodules: false
+
+      - name: Checkout xOpat submodule (release/v3)
+        run: |
+          git submodule update --init external/xopat
+          cd external/xopat
+          git fetch origin release/v3
+          git checkout release/v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install pkg
+        run: npm install -g pkg
+
+      - name: Run build script
+        run: |
+          chmod +x scripts/linux/build_xopat.sh
+          scripts/linux/build_xopat.sh
+
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package artifact
+        run: |
+          zip -r "xopat_linux_${{ steps.tag.outputs.value }}.zip" \
+            dist/xopat/
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: ${{ steps.tag.outputs.value }}
+          files: xopat_linux_*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
