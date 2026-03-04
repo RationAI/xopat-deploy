@@ -1,0 +1,73 @@
+name: Build xOpat Windows
+
+on:
+  push:
+    tags:
+      - 'xopat-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. xopat-v1.0.0)'
+        required: true
+        type: string
+      ref:
+        description: 'Branch to build from (e.g. develop)'
+        required: false
+        default: 'develop'
+        type: string
+
+jobs:
+  build-windows:
+    name: Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          submodules: false
+
+      - name: Checkout xOpat submodule (release/v3)
+        run: |
+          git submodule update --init external/xopat
+          cd external/xopat
+          git fetch origin release/v3
+          git checkout release/v3
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install pkg
+        run: npm install -g pkg
+
+      - name: Run build script
+        shell: pwsh
+        run: scripts\windows\build_xopat.ps1
+
+      - name: Determine tag name
+        id: tag
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            echo "value=${{ inputs.tag }}" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "value=${{ github.ref_name }}" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\xopat\* `
+            -DestinationPath "xopat_windows_${{ steps.tag.outputs.value }}.zip"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: ${{ steps.tag.outputs.value }}
+          files: xopat_windows_*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
