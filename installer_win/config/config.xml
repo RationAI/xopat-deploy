@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Installer>
+  <Name>xOpat (Windows)</Name>
+  <Version>1.0.0</Version>
+  <Title>xOpat Setup</Title>
+  <Publisher>xx</Publisher>
+  <StartMenuDir>xOpat</StartMenuDir>
+  <TargetDir>@HomeDir@/xOpat</TargetDir>
+  <WizardStyle>Modern</WizardStyle>
+  <MaintenanceToolName>xOpat Maintenance</MaintenanceToolName>
+</Installer>
