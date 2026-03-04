@@ -59,8 +59,8 @@ jobs:
 
       - name: Package artifact
         run: |
-          zip -r "xopat_linux_${{ steps.tag.outputs.value }}.zip" \
-            dist/xopat/
+          cd dist/xopat
+          zip -r "../../xopat_linux_${{ steps.tag.outputs.value }}.zip" .
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
