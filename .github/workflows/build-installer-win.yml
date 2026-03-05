@@ -62,6 +62,12 @@ jobs:
           tools: 'tools_ifw'
           cache: true
 
+      - name: Find binarycreator
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse -Filter "binarycreator.exe" "$env:RUNNER_WORKSPACE" -ErrorAction SilentlyContinue
+          Get-ChildItem -Recurse -Filter "binarycreator.exe" "C:\Qt" -ErrorAction SilentlyContinue
+
       - name: Build installer
         shell: pwsh
         run: |
