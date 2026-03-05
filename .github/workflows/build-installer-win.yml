@@ -62,19 +62,13 @@ jobs:
           tools: 'tools_ifw'
           cache: true
 
-      - name: Find binarycreator
-        shell: pwsh
-        run: |
-          Get-ChildItem -Recurse -Filter "binarycreator.exe" "$env:RUNNER_WORKSPACE" -ErrorAction SilentlyContinue
-          Get-ChildItem -Recurse -Filter "binarycreator.exe" "C:\Qt" -ErrorAction SilentlyContinue
-
       - name: Build installer
         shell: pwsh
         run: |
-          $ifw = "$env:RUNNER_WORKSPACE\Qt\Tools\QtInstallerFramework\4.10\bin\binarycreator.exe"
+          $ifw = "$env:IQTA_TOOLS\QtInstallerFramework\4.7\bin\binarycreator.exe"
           & $ifw -c installer_win\config\config.xml `
                  -p installer_win\packages `
-                 "xOpat-Installer-Windows-${{ inputs.tag }}.exe"
+                  "xOpat-Installer-Windows-${{ inputs.tag }}.exe"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
