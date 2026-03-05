@@ -1,0 +1,72 @@
+name: Build Installer Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Installer tag (e.g. installer-v1.0.0)'
+        required: true
+        type: string
+      wsi_tag:
+        description: 'WSI-Service tag (e.g. wsi-v1.0.0)'
+        required: true
+        type: string
+      xopat_tag:
+        description: 'xOpat tag (e.g. xopat-v1.0.0)'
+        required: true
+        type: string
+      ref:
+        description: 'Branch to build from (e.g. develop)'
+        required: false
+        default: 'develop'
+        type: string
+
+jobs:
+  build-installer-linux:
+    name: Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Download WSI-Service binary
+        run: |
+          curl -L "https://github.com/RationAI/xopat-deploy/releases/download/${{ inputs.wsi_tag }}/wsi_service_binary_linux_${{ inputs.wsi_tag }}.zip" -o wsi.zip
+          unzip wsi.zip -d installer_linux/packages/xopat/data/wsi-service
+          rm wsi.zip
+
+      - name: Download xOpat binary
+        run: |
+          curl -L "https://github.com/RationAI/xopat-deploy/releases/download/${{ inputs.xopat_tag }}/xopat_linux_${{ inputs.xopat_tag }}.zip" -o xopat.zip
+          unzip xopat.zip -d installer_linux/packages/xopat/data/xopat
+          rm xopat.zip
+
+      - name: Copy .env template
+        run: |
+          cp envs/wsi_service.env installer_linux/packages/xopat/data/wsi-service/.env
+
+      - name: Install Qt IFW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.0'
+          tools: 'tools_ifw'
+          cache: true
+
+      - name: Build installer
+        run: |
+          "$IQTA_TOOLS/QtInstallerFramework/4.7/bin/binarycreator" \
+            -c installer_linux/config/config.xml \
+            -p installer_linux/packages \
+            "xOpat-Installer-Linux-${{ inputs.tag }}"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          files: xOpat-Installer-Linux-*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
