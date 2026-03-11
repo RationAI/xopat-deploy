@@ -10,6 +10,7 @@ if (-not (Test-Path $XopatDir))          { throw "Missing submodule: $XopatDir" 
 
 Set-Location $XopatDir
 npm install
+Copy-Item "$XopatDir\env\env.default.json" "$XopatDir\env\env.json" -Force
 npm run build
 npx pkg . --targets node18-win-x64 --output $OutputBin
 
