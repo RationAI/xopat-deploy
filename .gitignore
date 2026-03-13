@@ -1,1 +1,3 @@
 /dist
+/pypi/dist
+*.egg-info/
