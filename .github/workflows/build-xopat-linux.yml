@@ -32,8 +32,7 @@ jobs:
         run: |
           git submodule update --init external/xopat
           cd external/xopat
-          git fetch origin release/v3
-          git checkout release/v3
+
       - name: Fix x-forwarded-proto header parsing
         run: |
           sed -i "s/const protocol = req.headers\['x-forwarded-proto'\] || 'http';/const protocol = (req.headers['x-forwarded-proto'] || 'http').split(',')[0].trim();/" external/xopat/server/node/index.js
