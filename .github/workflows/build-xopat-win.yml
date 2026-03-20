@@ -32,8 +32,6 @@ jobs:
         run: |
           git submodule update --init external/xopat
           cd external/xopat
-          git fetch origin release/v3
-          git checkout release/v3
 
       - name: Set up Node.js 18
         uses: actions/setup-node@v4
