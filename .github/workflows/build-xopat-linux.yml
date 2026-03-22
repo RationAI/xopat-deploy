@@ -45,11 +45,11 @@ jobs:
           sed -i "/if (process.env.NODE_ENV === 'production')/,/}/d" external/xopat/server/node/index.js
           echo "Verify fix:"
           grep -n "SameSite\|Secure\|NODE_ENV" external/xopat/server/node/index.js
-      - name: Fix CORS headers
+      - name: Fix CORS and cache headers
         run: |
-          sed -i "s/const server = http.createServer(async (req, res) => {/const server = http.createServer(async (req, res) => {\n    const origin = req.headers['origin'] || req.headers['referer'] || '';\n    res.setHeader('Access-Control-Allow-Origin', origin || '*');\n    res.setHeader('Access-Control-Allow-Credentials', 'true');\n    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');\n    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-xopat-csrf');\n    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }/" external/xopat/server/node/index.js
+          sed -i "s/const server = http.createServer(async (req, res) => {/const server = http.createServer(async (req, res) => {\n    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');\n    res.setHeader('Pragma', 'no-cache');/" external/xopat/server/node/index.js
           echo "Verify:"
-          grep -n "Access-Control" external/xopat/server/node/index.js
+          grep -n "Cache-Control\|Pragma" external/xopat/server/node/index.js
     
       - name: Set up Node.js
         uses: actions/setup-node@v4
