@@ -5,9 +5,9 @@ import os
 from pathlib import Path
 
 GITHUB_REPO = "RationAI/xopat-deploy"
-WSI_VERSION = "wsi-v1.0.0"
-XOPAT_VERSION = "xopat-v1.0.0"
-BINARIES_DIR = Path.home() / ".xopat_deploy"
+WSI_VERSION = os.environ.get("WSI_VERSION", "wsi-v1.0.0")
+XOPAT_VERSION = os.environ.get("XOPAT_VERSION", "xopat-v1.0.3")
+BINARIES_DIR = Path.home() / ".xopat"
 
 
 def get_platform():
@@ -18,6 +18,9 @@ def get_platform():
         return "linux"
     else:
         raise RuntimeError(f"Unsupported platform: {system}")
+    
+def is_windows():
+    return get_platform() == "windows"
     
 def download_url(filename, tag):
     return f"https://github.com/{GITHUB_REPO}/releases/download/{tag}/{filename}"
@@ -30,6 +33,7 @@ def download_and_extract(url, dest_dir):
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(dest_dir)
     zip_path.unlink()
+    print("Download complete.")
 
 def get_wsi_binary():
     plat = get_platform()
