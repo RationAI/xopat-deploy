@@ -6,6 +6,7 @@ cd "$BASEDIR/wsi-service"
 cd "$BASEDIR"
 sleep 3
 echo "Starting xOpat..."
+export XOPAT_CACHE_DIR="$BASEDIR/xopat/cache"
 "$BASEDIR/xopat/xopat_binary" &
 sleep 2
 xdg-open "http://localhost:9000/"
