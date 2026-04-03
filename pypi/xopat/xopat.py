@@ -21,8 +21,15 @@ class XOpat:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
         except Exception:
             pass
+        try:
+            self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
+            except Exception:
+                pass
+            self.proc.wait()
         print("xOpat stopped.")
-        self.proc.wait()
 
 def start_xopat(binary):
     binary = Path(binary)

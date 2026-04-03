@@ -22,9 +22,15 @@ class WsiService:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
         except Exception:
             pass
-
+        try:
+            self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
+            except Exception:
+                pass
+            self.proc.wait()
         print("WSI-Service stopped.")
-        self.proc.wait()
 
 def start_wsi_service(binary, data_dir=None):
     binary = Path(binary)
