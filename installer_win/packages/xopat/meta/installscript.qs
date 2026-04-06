@@ -1,21 +1,20 @@
 function Component() {}
 Component.prototype.createOperations = function() {
     component.createOperations();
-    var baseDir      = "@TargetDir@";
-    var launcherVbs  = baseDir + "\\start_all.vbs";
-    var xopatExe     = baseDir + "\\xopat\\xopat_binary.exe";
+    var baseDir  = "@TargetDir@";
+    var trayExe  = baseDir + "\\xopat_tray_binary\\xopat_tray_binary.exe";
     component.addOperation(
         "CreateShortcut",
-        launcherVbs,
+        trayExe,
         "@StartMenuDir@\\xOpat\\xOpat.lnk",
         "workingDirectory=" + baseDir,
-        "iconPath=" + xopatExe
+        "iconPath=" + trayExe
     );
     component.addOperation(
         "CreateShortcut",
-        launcherVbs,
+        trayExe,
         "@DesktopDir@\\xOpat.lnk",
         "workingDirectory=" + baseDir,
-        "iconPath=" + xopatExe
+        "iconPath=" + trayExe
     );
 };
