@@ -38,9 +38,10 @@ def start_servers(install_dir):
     xopat_exe = os.path.join(install_dir, "xopat", "xopat_binary.exe")
     wsi_dir = os.path.join(install_dir, "wsi-service")
 
-    procs = [subprocess.Popen([wsi_exe], cwd=wsi_dir, env=env)]
+    no_window = subprocess.CREATE_NO_WINDOW
+    procs = [subprocess.Popen([wsi_exe], cwd=wsi_dir, env=env, creationflags=no_window)]
     time.sleep(3)
-    procs.append(subprocess.Popen([xopat_exe], env=env))
+    procs.append(subprocess.Popen([xopat_exe], env=env, creationflags=no_window))
     time.sleep(2)
     webbrowser.open(XOPAT_URL)
     return procs
