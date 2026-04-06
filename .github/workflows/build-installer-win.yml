@@ -55,6 +55,14 @@ jobs:
         run: |
           Copy-Item envs\wsi_service.env installer_win\packages\xopat\data\wsi-service\.env
 
+      - name: Build tray app
+        shell: pwsh
+        run: |
+          python -m pip install pystray Pillow pyinstaller
+          Set-Location installer_win
+          pyinstaller xopat_tray.spec
+          Copy-Item -Recurse dist\xopat_tray_binary packages\xopat\data\xopat_tray_binary
+
       - name: Install Qt IFW
         uses: jurplel/install-qt-action@v4
         with:
