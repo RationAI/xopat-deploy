@@ -4,6 +4,7 @@ import time
 import threading
 import webbrowser
 import subprocess
+import ctypes
 
 import pystray
 from PIL import Image, ImageDraw
@@ -61,6 +62,11 @@ def stop_servers(procs, icon):
 
 
 def main():
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        pass
+
     install_dir = get_install_dir()
     procs = start_servers(install_dir)
 
