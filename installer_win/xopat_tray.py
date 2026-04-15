@@ -123,6 +123,18 @@ def stop_servers(procs):
             p.kill()
 
 
+def restart_wsi(install_dir, procs):
+    """Terminate and relaunch only the wsi-service process (procs[0])."""
+    p = procs[0]
+    p.terminate()
+    time.sleep(2)
+    if p.poll() is None:
+        p.kill()
+
+    wsi_exe = os.path.join(install_dir, "wsi-service", "wsi_service_binary.exe")
+    wsi_dir = os.path.join(install_dir, "wsi-service")
+    procs[0] = subprocess.Popen([wsi_exe], cwd=wsi_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+
 
 def main():
     try:
@@ -143,13 +155,16 @@ def main():
         webbrowser.open(XOPAT_URL)
 
     def on_change_data_dir(_icon, _):
-        threading.Thread(target=prompt_data_dir, args=(env_path,), daemon=True).start()
+        def change_and_restart():
+            if prompt_data_dir(env_path):
+                restart_wsi(install_dir, procs)
+        threading.Thread(target=change_and_restart, daemon=True).start()
 
     def on_stop(icon, _):
-        def _do():
+        def stop_and_exit():
             stop_servers(procs)
             icon.stop()
-        threading.Thread(target=_do, daemon=True).start()
+        threading.Thread(target=stop_and_exit, daemon=True).start()
 
     menu = pystray.Menu(
         pystray.MenuItem("Open xOpat", on_open, default=True),
