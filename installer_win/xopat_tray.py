@@ -21,6 +21,72 @@ def get_install_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def get_env_path(install_dir):
+    return os.path.join(install_dir, "wsi-service", ".env")
+
+
+def read_data_dir(env_path):
+    """Read WS_DATA_DIR value from .env file. Returns empty string if not set."""
+    if not os.path.exists(env_path):
+        return ""
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("WS_DATA_DIR="):
+                return line[len("WS_DATA_DIR="):].strip()
+    return ""
+
+
+def write_data_dir(env_path, path):
+    """Write WS_DATA_DIR value into .env file, replacing the existing line."""
+    if not os.path.exists(env_path):
+        return
+    with open(env_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    with open(env_path, "w", encoding="utf-8") as f:
+        for line in lines:
+            if line.startswith("WS_DATA_DIR="):
+                f.write(f"WS_DATA_DIR={path}\n")
+            else:
+                f.write(line)
+
+
+def prompt_data_dir(env_path, first_run=False):
+    """
+    Open a folder picker dialog and save the chosen path to .env.
+    Returns the chosen path, or None if the user cancelled.
+    On first_run, cancelling exits the application.
+    """
+    import tkinter as tk
+    from tkinter import filedialog, messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    if first_run:
+        messagebox.showinfo(
+            "xOpat — Data directory",
+            "Please choose the folder where your slide images are stored.\n"
+            "This will be used as the root data directory for the WSI service.",
+            parent=root,
+        )
+
+    chosen = filedialog.askdirectory(
+        title="Select data directory for WSI service",
+        parent=root,
+    )
+    root.destroy()
+
+    if not chosen:
+        if first_run:
+            sys.exit(0)
+        return None
+
+    write_data_dir(env_path, chosen)
+    return chosen
+
+
 def make_icon():
     """Generate a simple teal circle icon for the system tray."""
     size = 64
@@ -48,17 +114,14 @@ def start_servers(install_dir):
     return procs
 
 
-def stop_servers(procs, icon):
-    def _do():
-        for p in procs:
-            p.terminate()
-        time.sleep(2)
-        for p in procs:
-            if p.poll() is None:
-                p.kill()
-        icon.stop()
+def stop_servers(procs):
+    for p in procs:
+        p.terminate()
+    time.sleep(2)
+    for p in procs:
+        if p.poll() is None:
+            p.kill()
 
-    threading.Thread(target=_do, daemon=True).start()
 
 
 def main():
@@ -68,24 +131,35 @@ def main():
         pass
 
     install_dir = get_install_dir()
+    env_path = get_env_path(install_dir)
+
+    # First-run: prompt if WS_DATA_DIR is unset
+    if not read_data_dir(env_path):
+        prompt_data_dir(env_path, first_run=True)
+
     procs = start_servers(install_dir)
 
-    icon_holder = [None]
-
-    def on_open(icon, _):
+    def on_open(_icon, _):
         webbrowser.open(XOPAT_URL)
 
+    def on_change_data_dir(_icon, _):
+        threading.Thread(target=prompt_data_dir, args=(env_path,), daemon=True).start()
+
     def on_stop(icon, _):
-        stop_servers(procs, icon)
+        def _do():
+            stop_servers(procs)
+            icon.stop()
+        threading.Thread(target=_do, daemon=True).start()
 
     menu = pystray.Menu(
         pystray.MenuItem("Open xOpat", on_open, default=True),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Change data directory", on_change_data_dir),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Stop servers", on_stop),
     )
 
     icon = pystray.Icon("xOpat", make_icon(), "xOpat", menu)
-    icon_holder[0] = icon
     icon.run()
 
 
