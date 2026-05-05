@@ -90,7 +90,7 @@ def prompt_data_dir(env_path, first_run=False):
 def load_tray_icon():
     """Load the xOpat logo for the system tray."""
     if getattr(sys, "frozen", False):
-        base = os.path.dirname(sys.executable)
+        base = os.path.join(os.path.dirname(sys.executable), "_internal")
     else:
         base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
     return Image.open(os.path.join(base, "xopat-logo.png"))
