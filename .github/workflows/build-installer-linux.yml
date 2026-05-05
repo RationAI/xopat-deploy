@@ -48,6 +48,11 @@ jobs:
         run: |
           cp envs/wsi_service.env installer_linux/packages/xopat/data/wsi-service/.env
 
+      - name: Copy icon to installer data and config
+        run: |
+          cp assets/xopat-logo.png installer_linux/packages/xopat/data/xopat-logo.png
+          cp assets/xopat-logo.ico installer_linux/config/xopat-logo.ico
+
       - name: Install Qt IFW
         uses: jurplel/install-qt-action@v4
         with:
