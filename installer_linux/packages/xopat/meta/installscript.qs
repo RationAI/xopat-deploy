@@ -7,6 +7,6 @@ Component.prototype.createOperations = function() {
     component.addOperation(
         "CreateDesktopEntry",
         "@HomeDir@/.local/share/applications/xOpat.desktop",
-        "Type=Application\nName=xOpat\nExec=@TargetDir@/start_all.sh\nTerminal=false\nCategories=Science;"
+        "Type=Application\nName=xOpat\nExec=@TargetDir@/start_all.sh\nIcon=@TargetDir@/xopat-logo.png\nTerminal=false\nCategories=Science;"
     );
 };

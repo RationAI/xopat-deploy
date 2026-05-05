@@ -7,4 +7,5 @@
   <Default>true</Default>
   <ForcedInstallation>true</ForcedInstallation>
   <Script>installscript.qs</Script>
+  <InstallerWindowIcon>xopat-logo</InstallerWindowIcon>
 </Package>

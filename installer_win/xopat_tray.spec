@@ -1,23 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Build from the installer_win/ directory:
-#   pip install pystray Pillow pyinstaller
-#   pyinstaller xopat_tray.spec
-# Output lands in dist/xopat_tray_binary/ — copy that folder into
-# installer_win/packages/xopat/data/ before building the Qt IFW installer.
-
 a = Analysis(
     ['xopat_tray.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        ('../assets/xopat-logo.ico', '.'),
+        ('../assets/xopat-logo.png', '.'),
+    ],
     hiddenimports=['pystray._win32', 'tkinter', 'tkinter.filedialog', 'tkinter.messagebox'],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
 )
-
 pyz = PYZ(a.pure, a.zipped_data)
-
 exe = EXE(
     pyz,
     a.scripts,
@@ -25,8 +20,9 @@ exe = EXE(
     name='xopat_tray_binary',
     debug=False,
     console=False,
+    icon='../assets/xopat-logo.ico',
+    version='version_info.txt',
 )
-
 coll = COLLECT(
     exe,
     a.binaries,

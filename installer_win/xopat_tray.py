@@ -7,7 +7,7 @@ import subprocess
 import ctypes
 
 import pystray
-from PIL import Image, ImageDraw
+from PIL import Image
 
 XOPAT_URL = "http://localhost:9000/"
 
@@ -66,14 +66,14 @@ def prompt_data_dir(env_path, first_run=False):
 
     if first_run:
         messagebox.showinfo(
-            "xOpat — Data directory",
-            "Please choose the folder where your slide images are stored.\n"
-            "This will be used as the root data directory for the WSI service.",
+            "xOpat",
+            "Please select the folder with your slides.\n"
+            "You can always change this later.",
             parent=root,
         )
 
     chosen = filedialog.askdirectory(
-        title="Select data directory for WSI service",
+        title="xOpat — Select slides folder",
         parent=root,
     )
     root.destroy()
@@ -87,14 +87,13 @@ def prompt_data_dir(env_path, first_run=False):
     return chosen
 
 
-def make_icon():
-    """Generate a simple teal circle icon for the system tray."""
-    size = 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.ellipse([2, 2, size - 2, size - 2], fill=(0, 140, 186))
-    d.ellipse([20, 20, size - 20, size - 20], fill=(255, 255, 255))
-    return img
+def load_tray_icon():
+    """Load the xOpat logo for the system tray."""
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+    return Image.open(os.path.join(base, "xopat-logo.png"))
 
 
 def start_servers(install_dir):
@@ -171,10 +170,10 @@ def main():
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Change data directory", on_change_data_dir),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Stop servers", on_stop),
+        pystray.MenuItem("Exit", on_stop),
     )
 
-    icon = pystray.Icon("xOpat", make_icon(), "xOpat", menu)
+    icon = pystray.Icon("xOpat", load_tray_icon(), "xOpat", menu)
     icon.run()
 
 
