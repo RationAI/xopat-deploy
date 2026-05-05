@@ -55,6 +55,11 @@ jobs:
         run: |
           Copy-Item envs\wsi_service.env installer_win\packages\xopat\data\wsi-service\.env
 
+      - name: Copy icon to installer config
+        shell: pwsh
+        run: |
+          Copy-Item assets\xopat-logo.ico installer_win\config\xopat-logo.ico
+
       - name: Build tray app
         shell: pwsh
         run: |
