@@ -4,6 +4,7 @@ Component.prototype.createOperations = function() {
     component.addOperation("Execute", "chmod", "+x", "@TargetDir@/wsi-service/wsi_service_binary");
     component.addOperation("Execute", "chmod", "+x", "@TargetDir@/xopat/xopat_binary");
     component.addOperation("Execute", "chmod", "+x", "@TargetDir@/start_all.sh");
+    component.addOperation("Execute", "chmod", "+x", "@TargetDir@/change_slides_dir.sh");
     component.addOperation(
         "CreateDesktopEntry",
         "@HomeDir@/.local/share/applications/xOpat.desktop",
