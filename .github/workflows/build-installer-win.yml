@@ -8,34 +8,49 @@ on:
         required: true
         type: string
       wsi_tag:
-        description: 'WSI-Service tag (e.g. wsi-v1.0.0)'
-        required: true
+        description: 'WSI-Service tag (e.g. wsi-v1.0.0). Leave empty for latest.'
+        required: false
         type: string
       xopat_tag:
-        description: 'xOpat tag (e.g. xopat-v1.0.0)'
-        required: true
+        description: 'xOpat tag (e.g. xopat-v1.0.0). Leave empty for latest.'
+        required: false
         type: string
       ref:
         description: 'Branch to build from (e.g. develop)'
         required: false
         default: 'develop'
         type: string
-
 jobs:
   build-installer-windows:
     name: Windows
     runs-on: windows-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
 
+      - name: Resolve tags
+        id: tags
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.wsi_tag }}" ]; then
+            echo "wsi=${{ inputs.wsi_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "wsi=$(gh release list --json tagName -q '[.[] | select(.tagName | startswith("wsi-v"))][0].tagName')" >> $GITHUB_OUTPUT
+          fi
+          if [ -n "${{ inputs.xopat_tag }}" ]; then
+            echo "xopat=${{ inputs.xopat_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "xopat=$(gh release list --json tagName -q '[.[] | select(.tagName | startswith("xopat-v"))][0].tagName')" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download WSI-Service binary
         shell: pwsh
         run: |
-          $url = "https://github.com/RationAI/xopat-deploy/releases/download/${{ inputs.wsi_tag }}/wsi_service_binary_windows_${{ inputs.wsi_tag }}.zip"
+          $url = "https://github.com/RationAI/xopat-deploy/releases/download/${{ steps.tags.outputs.wsi }}/wsi_service_binary_windows_${{ steps.tags.outputs.wsi }}.zip"
           Invoke-WebRequest $url -OutFile wsi.zip `
             -Headers @{ Authorization = "token ${{ secrets.GITHUB_TOKEN }}" }
           Expand-Archive wsi.zip -DestinationPath installer_win\packages\xopat\data\wsi-service
@@ -44,7 +59,7 @@ jobs:
       - name: Download xOpat binary
         shell: pwsh
         run: |
-          $url = "https://github.com/RationAI/xopat-deploy/releases/download/${{ inputs.xopat_tag }}/xopat_windows_${{ inputs.xopat_tag }}.zip"
+          $url = "https://github.com/RationAI/xopat-deploy/releases/download/${{ steps.tags.outputs.xopat }}/xopat_windows_${{ steps.tags.outputs.xopat }}.zip"
           Invoke-WebRequest $url -OutFile xopat.zip `
             -Headers @{ Authorization = "token ${{ secrets.GITHUB_TOKEN }}" }
           Expand-Archive xopat.zip -DestinationPath installer_win\packages\xopat\data\xopat
