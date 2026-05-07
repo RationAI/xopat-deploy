@@ -24,7 +24,6 @@ source venv/bin/activate
 
 pip install -U pip wheel setuptools pyinstaller
 pip install poetry
-poetry lock
 poetry install
 
 cp "$RUN_SRC" "$RUN_DST"
