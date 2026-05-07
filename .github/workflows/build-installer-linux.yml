@@ -8,12 +8,12 @@ on:
         required: true
         type: string
       wsi_tag:
-        description: 'WSI-Service tag (e.g. wsi-v1.0.0)'
-        required: true
+        description: 'WSI-Service tag (e.g. wsi-v1.0.0). Leave empty for latest.'
+        required: false
         type: string
       xopat_tag:
-        description: 'xOpat tag (e.g. xopat-v1.0.0)'
-        required: true
+        description: 'xOpat tag (e.g. xopat-v1.0.0). Leave empty for latest.'
+        required: false
         type: string
       ref:
         description: 'Branch to build from (e.g. develop)'
@@ -32,15 +32,31 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      - name: Resolve tags
+        id: tags
+        run: |
+          if [ -n "${{ inputs.wsi_tag }}" ]; then
+            echo "wsi=${{ inputs.wsi_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "wsi=$(gh release list --json tagName -q '[.[] | select(.tagName | startswith("wsi-v"))][0].tagName')" >> $GITHUB_OUTPUT
+          fi
+          if [ -n "${{ inputs.xopat_tag }}" ]; then
+            echo "xopat=${{ inputs.xopat_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "xopat=$(gh release list --json tagName -q '[.[] | select(.tagName | startswith("xopat-v"))][0].tagName')" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download WSI-Service binary
         run: |
-          curl -L "https://github.com/RationAI/xopat-deploy/releases/download/${{ inputs.wsi_tag }}/wsi_service_binary_linux_${{ inputs.wsi_tag }}.zip" -o wsi.zip
+          curl -L "https://github.com/RationAI/xopat-deploy/releases/download/${{ steps.tags.outputs.wsi }}/wsi_service_binary_linux_${{ steps.tags.outputs.wsi }}.zip" -o wsi.zip
           unzip wsi.zip -d installer_linux/packages/xopat/data/wsi-service
           rm wsi.zip
 
       - name: Download xOpat binary
         run: |
-          curl -L "https://github.com/RationAI/xopat-deploy/releases/download/${{ inputs.xopat_tag }}/xopat_linux_${{ inputs.xopat_tag }}.zip" -o xopat.zip
+          curl -L "https://github.com/RationAI/xopat-deploy/releases/download/${{ steps.tags.outputs.xopat }}/xopat_linux_${{ steps.tags.outputs.xopat }}.zip" -o xopat.zip
           unzip xopat.zip -d installer_linux/packages/xopat/data/xopat
           rm xopat.zip
 
