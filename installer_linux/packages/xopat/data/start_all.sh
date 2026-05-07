@@ -32,16 +32,16 @@ echo "Starting WSI-Service..."
 cd "$BASEDIR/wsi-service"
 ./wsi_service_binary > "$BASEDIR/wsi-service.log" 2>&1 &
 WSI_PID=$!
-cd "$BASEDIR/wsi-service"
+cd "$BASEDIR"
 sleep 3
 echo "Starting xOpat..."
 export XOPAT_CACHE_DIR="$BASEDIR/xopat/cache"
-"$BASEDIR/xopat/xopat_binary" &
+"$BASEDIR/xopat/xopat_binary" > "$BASEDIR/xopat.log" 2>&1 &
 XOPAT_PID=$!
 sleep 2
 echo "Slides folder: $DATA_DIR"
 echo "To change it, run change_slides_dir.sh and restart xOpat."
-xdg-open "http://localhost:9000/"
+xdg-open "http://localhost:9000/" 2>/dev/null
 
 echo "xOpat is running. Close this window to stop."
 wait
