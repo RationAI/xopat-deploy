@@ -36,7 +36,6 @@ if (Test-Path ".\venv") { Remove-Item -Recurse -Force ".\venv" }
 
 python -m pip install -U pip wheel setuptools pyinstaller
 pip install poetry
-poetry lock
 poetry install
 
 python -c "import uvicorn, fastapi; print('deps OK')"
