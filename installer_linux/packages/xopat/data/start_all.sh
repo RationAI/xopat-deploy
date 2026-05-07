@@ -30,9 +30,9 @@ trap cleanup EXIT
 
 echo "Starting WSI-Service..."
 cd "$BASEDIR/wsi-service"
-./wsi_service_binary &
+./wsi_service_binary > "$BASEDIR/wsi-service.log" 2>&1 &
 WSI_PID=$!
-cd "$BASEDIR"
+cd "$BASEDIR/wsi-service"
 sleep 3
 echo "Starting xOpat..."
 export XOPAT_CACHE_DIR="$BASEDIR/xopat/cache"
