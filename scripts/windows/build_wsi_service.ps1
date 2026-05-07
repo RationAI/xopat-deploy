@@ -30,12 +30,14 @@ if (Test-Path $PyProject) {
     }
 }
 
+pip install poetry
+
+cd "$WsiDir"
 if (Test-Path ".\venv") { Remove-Item -Recurse -Force ".\venv" }
 & py -3.12 -m venv venv
 & ".\venv\Scripts\Activate.ps1"
-
 python -m pip install -U pip wheel setuptools pyinstaller
-pip install poetry
+
 poetry lock
 poetry install
 
