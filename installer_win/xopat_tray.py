@@ -168,7 +168,7 @@ def main():
     menu = pystray.Menu(
         pystray.MenuItem("Open xOpat", on_open, default=True),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Change data directory", on_change_data_dir),
+        pystray.MenuItem("Change slides folder", on_change_data_dir),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Exit", on_stop),
     )
