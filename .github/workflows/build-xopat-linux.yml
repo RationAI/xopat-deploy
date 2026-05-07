@@ -31,7 +31,6 @@ jobs:
       - name: Checkout xOpat submodule (release/v3)
         run: |
           git submodule update --init external/xopat
-          cd external/xopat
     
       - name: Set up Node.js
         uses: actions/setup-node@v4
