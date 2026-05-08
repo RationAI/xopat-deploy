@@ -1,0 +1,123 @@
+name: Publish to PyPI
+
+on:
+  # Trigger on tag push: pypi-v0.2.0, pypi-v1.0.0, etc.
+  push:
+    tags:
+      - "pypi-v*"
+
+  # Manual trigger with options
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: "Package version (e.g. 0.2.0). Required."
+        required: true
+        type: string
+      wsi_version:
+        description: "WSI-Service binary version (e.g. wsi-v1.0.1). Leave empty to keep current."
+        required: false
+        type: string
+      xopat_version:
+        description: "xOpat binary version (e.g. xopat-v1.0.3). Leave empty to keep current."
+        required: false
+        type: string
+      target:
+        description: "Publish target"
+        required: true
+        type: choice
+        options:
+          - testpypi
+          - pypi
+        default: testpypi
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Copy wsi_service.env
+        run: cp envs/wsi_service.env pypi/xopat/wsi_service.env
+
+      - name: Set package version
+        working-directory: pypi
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Extract version from tag: pypi-v0.2.0 -> 0.2.0
+            VERSION="${GITHUB_REF_NAME#pypi-v}"
+          else
+            VERSION="${{ inputs.package_version }}"
+          fi
+          echo "Publishing version: $VERSION"
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+
+      - name: Set binary versions
+        working-directory: pypi
+        run: |
+          if [[ -n "${{ inputs.wsi_version }}" ]]; then
+            echo "Setting WSI_VERSION to ${{ inputs.wsi_version }}"
+            sed -i "s/WSI_VERSION = os.environ.get(\"WSI_VERSION\", \"[^\"]*\")/WSI_VERSION = os.environ.get(\"WSI_VERSION\", \"${{ inputs.wsi_version }}\")/" xopat/download.py
+          fi
+          if [[ -n "${{ inputs.xopat_version }}" ]]; then
+            echo "Setting XOPAT_VERSION to ${{ inputs.xopat_version }}"
+            sed -i "s/XOPAT_VERSION = os.environ.get(\"XOPAT_VERSION\", \"[^\"]*\")/XOPAT_VERSION = os.environ.get(\"XOPAT_VERSION\", \"${{ inputs.xopat_version }}\")/" xopat/download.py
+          fi
+
+      - name: Verify changes
+        working-directory: pypi
+        run: |
+          echo "=== pyproject.toml ==="
+          grep "^version" pyproject.toml
+          echo "=== download.py versions ==="
+          grep "VERSION" xopat/download.py
+
+      - name: Build package
+        working-directory: pypi
+        run: python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: pypi/dist/
+
+  publish-testpypi:
+    needs: build
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi')
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    needs: build
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
