@@ -21,6 +21,11 @@ on:
         description: "xOpat binary version (e.g. xopat-v1.0.3). Leave empty to keep current."
         required: false
         type: string
+      branch:
+        description: "Branch to build from (e.g. develop)"
+        required: false
+        type: string
+        default: develop
       target:
         description: "Publish target"
         required: true
@@ -35,6 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
 
       - uses: actions/setup-python@v5
         with:
@@ -63,11 +70,11 @@ jobs:
         run: |
           if [[ -n "${{ inputs.wsi_version }}" ]]; then
             echo "Setting WSI_VERSION to ${{ inputs.wsi_version }}"
-            sed -i "s/WSI_VERSION = os.environ.get(\"WSI_VERSION\", \"[^\"]*\")/WSI_VERSION = os.environ.get(\"WSI_VERSION\", \"${{ inputs.wsi_version }}\")/" xopat/download.py
+            sed -i 's/^WSI_VERSION = .*/WSI_VERSION = "${{ inputs.wsi_version }}"/' xopat/download.py
           fi
           if [[ -n "${{ inputs.xopat_version }}" ]]; then
             echo "Setting XOPAT_VERSION to ${{ inputs.xopat_version }}"
-            sed -i "s/XOPAT_VERSION = os.environ.get(\"XOPAT_VERSION\", \"[^\"]*\")/XOPAT_VERSION = os.environ.get(\"XOPAT_VERSION\", \"${{ inputs.xopat_version }}\")/" xopat/download.py
+            sed -i 's/^XOPAT_VERSION = .*/XOPAT_VERSION = "${{ inputs.xopat_version }}"/' xopat/download.py
           fi
 
       - name: Verify changes
