@@ -68,6 +68,8 @@ def setup_jupyterhub(jupyterhub_host):
 class Server:
     """Running xOpat + WSI-Service instance returned by run_server()."""
 
+    running = None
+
     def __init__(self, wsi, xopat):
         self._wsi = wsi
         self._xopat = xopat
@@ -80,6 +82,8 @@ class Server:
             self._xopat.stop()
         finally:
             self._wsi.stop()
+        if Server.running is self:
+            Server.running = None
 
 
 def run_server(data_dir=None):
@@ -90,6 +94,9 @@ def run_server(data_dir=None):
     Returns:
         Server instance with wsi_url and xopat_url attributes.
     """
+    if Server.running is not None:
+        Server.running.stop()
+
     data_dir = data_dir or os.getcwd()
     wsi_binary = get_wsi_binary()
     xopat_binary = get_xopat_binary()
@@ -99,7 +106,10 @@ def run_server(data_dir=None):
     except Exception:
         wsi.stop()
         raise
-    return Server(wsi, xopat)
+
+    print(f"Servers running. Slides folder: {data_dir}")
+    Server.running = Server(wsi, xopat)
+    return Server.running
 
 
 def display(server, slide, width="100%", height=800):
