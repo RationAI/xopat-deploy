@@ -1,12 +1,13 @@
 import platform
 import urllib.request
 import zipfile
-import os
 from pathlib import Path
 
 GITHUB_REPO = "RationAI/xopat-deploy"
-WSI_VERSION = os.environ.get("WSI_VERSION", "wsi-v1.0.0")
-XOPAT_VERSION = os.environ.get("XOPAT_VERSION", "xopat-v1.0.3")
+# Default binary versions. Overridden during PyPI build
+# (see .github/workflows/pypi-publish.yml).
+WSI_VERSION = "wsi-v1.0.1"
+XOPAT_VERSION = "xopat-v1.0.3"
 BINARIES_DIR = Path.home() / ".xopat"
 
 
@@ -25,11 +26,20 @@ def is_windows():
 def download_url(filename, tag):
     return f"https://github.com/{GITHUB_REPO}/releases/download/{tag}/{filename}"
 
+def _progress_hook(block_num, block_size, total_size):
+    downloaded = block_num * block_size
+    if total_size > 0:
+        pct = min(100, downloaded * 100 // total_size)
+        mb = downloaded / (1024 * 1024)
+        total_mb = total_size / (1024 * 1024)
+        print(f"\r  {mb:.1f}/{total_mb:.1f} MB ({pct}%)", end="", flush=True)
+
 def download_and_extract(url, dest_dir):
     dest_dir.mkdir(parents=True, exist_ok=True)
     zip_path = dest_dir / "download.zip"
-    print(f"Downloading {url} ...")
-    urllib.request.urlretrieve(url, zip_path)
+    print(f"Downloading {url}")
+    urllib.request.urlretrieve(url, zip_path, reporthook=_progress_hook)
+    print()
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(dest_dir)
     zip_path.unlink()

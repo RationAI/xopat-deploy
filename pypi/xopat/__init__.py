@@ -6,10 +6,13 @@ import time
 from IPython.display import HTML, IFrame, display as _ipy_display
 
 from .download import get_wsi_binary, get_xopat_binary
-from .wsi import start_wsi_service
-from .xopat import start_xopat
+from .wsi import start_wsi_service, WSI_PORT
+from .xopat import start_xopat, XOPAT_PORT
 
-def configure(jupyterhub_host):
+__all__ = ["setup_jupyterhub", "run_server", "display", "Server"]
+
+
+def setup_jupyterhub(jupyterhub_host):
     """
     Configure xOpat for JupyterHub environment.
     Call this before run_server() when running on JupyterHub.
@@ -21,8 +24,8 @@ def configure(jupyterhub_host):
     if not prefix:
         raise RuntimeError("JUPYTERHUB_SERVICE_PREFIX not set - are you on JupyterHub?")
 
-    wsi_path = f"{prefix}/proxy/8080"
-    xopat_path = f"{prefix}/proxy/9000"
+    wsi_path = f"{prefix}/proxy/{WSI_PORT}"
+    xopat_path = f"{prefix}/proxy/{XOPAT_PORT}"
 
     config = {
         "core": {
@@ -34,9 +37,8 @@ def configure(jupyterhub_host):
                     "path": xopat_path,
                     "image_group_server": host,
                     "image_group_protocol": f"`{wsi_path}/v3/slides/info?slide_id=${{data}}`",
-                    "image_group_preview": f"`{wsi_path}/v3/slides/thumbnail/max_size/250/250?slide_id=${{data}}`",
                     "data_group_server": host,
-                    "data_group_protocol": f"`{wsi_path}/v3/files/info?paths=${{data.join(\",\")}}`",
+                    "data_group_protocol": f"`{wsi_path}/v3/slides/info?slide_id=${{data}}`",
                     "headers": {},
                     "js_cookie_expire": 365,
                     "js_cookie_path": "/",
@@ -49,7 +51,6 @@ def configure(jupyterhub_host):
         },
         "plugins": {
             "slide-info": {"permaLoad": True},
-            "file-browser": {"permaLoad": True}
         },
         "modules": {
             "empaia-wsi-tile-source": {"permaLoad": True},
@@ -62,6 +63,7 @@ def configure(jupyterhub_host):
     env_path.write_text(json.dumps(config, indent=2))
     os.environ["XOPAT_ENV"] = str(env_path)
     print(f"Configured for JupyterHub: {host}{xopat_path}")
+
 
 class Server:
     """Running xOpat + WSI-Service instance returned by run_server()."""
@@ -78,6 +80,7 @@ class Server:
             self._xopat.stop()
         finally:
             self._wsi.stop()
+
 
 def run_server(data_dir=None):
     """
@@ -98,6 +101,7 @@ def run_server(data_dir=None):
         raise
     return Server(wsi, xopat)
 
+
 def display(server, slide, width="100%", height=800):
     """
     Display a slide in a Jupyter notebook iframe.
@@ -109,14 +113,13 @@ def display(server, slide, width="100%", height=800):
     """
     slide_q = slide.replace(">", "%3E")
     url = server.xopat_url + "/?slides=" + slide_q
-    
+
     prefix = os.environ.get("JUPYTERHUB_SERVICE_PREFIX", "")
-    
+
     if not prefix:
-        # localhost
         _ipy_display(IFrame(url, width=width, height=height))
         return
-    
+
     # JupyterHub - reload fallback
     uid = hashlib.md5(f"{slide}{time.time()}".encode()).hexdigest()[:8]
     print(f"Loading slide: {slide}")

@@ -1,68 +1,29 @@
-import subprocess
-import signal
 import os
-import time
-import urllib.request
 from pathlib import Path
-from .download import is_windows
+from .process import start_process, stop_process
 
-_ENV_TEMPLATE = Path(__file__).parent / "wsi_service.env"
+ENV_TEMPLATE = Path(__file__).parent / "wsi_service.env"
+
+WSI_PORT = 8080
+WSI_READY_URL = f"http://127.0.0.1:{WSI_PORT}/docs"
+
 
 class WsiService:
     def __init__(self, proc):
         self.proc = proc
-        self.base_url = "http://127.0.0.1:8080"
+        self.base_url = f"http://127.0.0.1:{WSI_PORT}"
 
     def stop(self):
-        print("Stopping WSI-Service...")
-        try:
-            if is_windows():
-                self.proc.terminate()
-            else:
-                os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
-        except Exception:
-            pass
-        try:
-            self.proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
-            except Exception:
-                pass
-            self.proc.wait()
-        print("WSI-Service stopped.")
+        stop_process(self.proc, "WSI-Service")
+
 
 def start_wsi_service(binary, data_dir=None):
     binary = Path(binary)
     env_file = binary.parent / ".env"
-    content = _ENV_TEMPLATE.read_text()
+    content = ENV_TEMPLATE.read_text()
     if data_dir is not None:
         content += f"\nWS_DATA_DIR={data_dir}\n"
     env_file.write_text(content)
 
-    print("Starting WSI-Service...")
-    if is_windows():
-        proc = subprocess.Popen(
-            [str(binary)],
-            cwd=str(binary.parent),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    else:
-        proc = subprocess.Popen(
-            [str(binary)],
-            cwd=str(binary.parent),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            preexec_fn=os.setsid,
-        )
-    
-    for _ in range(50):
-        try:
-            urllib.request.urlopen("http://127.0.0.1:8080/docs", timeout=0.5)
-            print("WSI-Service is running.")
-            return WsiService(proc)
-        except Exception:
-            time.sleep(0.2)
-    proc.terminate()
-    raise RuntimeError("WSI-Service did not start on http://127.0.0.1:8080")
+    proc = start_process(binary, WSI_READY_URL, "WSI-Service")
+    return WsiService(proc)
