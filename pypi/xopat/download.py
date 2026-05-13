@@ -1,3 +1,4 @@
+import os
 import platform
 import urllib.request
 import zipfile
@@ -6,9 +7,8 @@ from pathlib import Path
 GITHUB_REPO = "RationAI/xopat-deploy"
 # Default binary versions. Overridden during PyPI build
 # (see .github/workflows/pypi-publish.yml).
-WSI_VERSION = "wsi-v1.0.1"
+WSI_VERSION = "wsi-v1.0.2"
 XOPAT_VERSION = "xopat-v1.0.3"
-BINARIES_DIR = Path.home() / ".xopat"
 
 
 def get_platform():
@@ -19,12 +19,22 @@ def get_platform():
         return "linux"
     else:
         raise RuntimeError(f"Unsupported platform: {system}")
-    
+
+
 def is_windows():
     return get_platform() == "windows"
-    
+
+
+def get_binaries_dir():
+    # On Colab, use /content/.xopat (survives kernel restart)
+    if os.path.exists("/content") and "COLAB_RELEASE_TAG" in os.environ:
+        return Path("/content/.xopat")
+    return Path.home() / ".xopat"
+
+
 def download_url(filename, tag):
     return f"https://github.com/{GITHUB_REPO}/releases/download/{tag}/{filename}"
+
 
 def _progress_hook(block_num, block_size, total_size):
     downloaded = block_num * block_size
@@ -33,6 +43,7 @@ def _progress_hook(block_num, block_size, total_size):
         mb = downloaded / (1024 * 1024)
         total_mb = total_size / (1024 * 1024)
         print(f"\r  {mb:.1f}/{total_mb:.1f} MB ({pct}%)", end="", flush=True)
+
 
 def download_and_extract(url, dest_dir):
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -45,9 +56,10 @@ def download_and_extract(url, dest_dir):
     zip_path.unlink()
     print("Download complete.")
 
+
 def get_wsi_binary():
     plat = get_platform()
-    dest = BINARIES_DIR / "wsi" / WSI_VERSION / plat
+    dest = get_binaries_dir() / "wsi" / WSI_VERSION / plat
     binary_name = "wsi_service_binary.exe" if plat == "windows" else "wsi_service_binary"
     binary = dest / binary_name
 
@@ -67,7 +79,7 @@ def get_wsi_binary():
 
 def get_xopat_binary():
     plat = get_platform()
-    dest = BINARIES_DIR / "xopat" / XOPAT_VERSION / plat
+    dest = get_binaries_dir() / "xopat" / XOPAT_VERSION / plat
     binary_name = "xopat_binary.exe" if plat == "windows" else "xopat_binary"
     binary = dest / binary_name
 

@@ -4,7 +4,7 @@ from .process import start_process, stop_process
 
 ENV_TEMPLATE = Path(__file__).parent / "wsi_service.env"
 
-WSI_PORT = 8080
+WSI_PORT = 8050
 WSI_READY_URL = f"http://127.0.0.1:{WSI_PORT}/docs"
 
 
