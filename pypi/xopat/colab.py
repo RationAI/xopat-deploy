@@ -46,7 +46,6 @@ def setup_colab():
 
     xopat_proxy = eval_js(f"google.colab.kernel.proxyPort({XOPAT_PORT})")
     xopat_proxy = xopat_proxy.rstrip("/")
-    print(f"xOpat proxy: {xopat_proxy}")
 
     config = {
           "core": {
@@ -144,8 +143,8 @@ def display_colab(slide_q, width, height):
 def fix_colab_libs():
     """
     Fix missing shared libraries on Colab.
-    Colab ships libtiff5 but the WSI-Service PyInstaller binary
-    expects libtiff6. Creates a symlink to bridge the gap.
+    Creates a symlink because Colab ships libtiff5 
+    but the WSI-Service PyInstaller binary expects libtiff6
     """
     internal_dir = get_wsi_binary().parent / "_internal"
     libtiff6 = internal_dir / "libtiff.so.6"
@@ -160,7 +159,6 @@ def fix_colab_libs():
     for line in result.stdout.strip().split("\n"):
         if line:
             os.symlink(line.strip(), str(libtiff6))
-            print(f"Symlinked {line.strip()} -> {libtiff6}")
             return
 
     print("Warning: libtiff.so.5 not found, WSI-Service may fail.")

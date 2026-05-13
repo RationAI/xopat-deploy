@@ -8,7 +8,7 @@ GITHUB_REPO = "RationAI/xopat-deploy"
 # Default binary versions. Overridden during PyPI build
 # (see .github/workflows/pypi-publish.yml).
 WSI_VERSION = "wsi-v1.0.2"
-XOPAT_VERSION = "xopat-v1.0.3"
+XOPAT_VERSION = "xopat-v1.0.5"
 
 
 def get_platform():
