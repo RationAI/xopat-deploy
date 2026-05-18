@@ -2,7 +2,7 @@
 <Installer>
   <Name>xOpat (Linux)</Name>
   <Version>1.0.0</Version>
-  <Title>xOpat Setup</Title>
+  <Title>xOpat</Title>
   <Publisher>RationAI — Masaryk University</Publisher>
   <StartMenuDir>xOpat</StartMenuDir>
   <TargetDir>@HomeDir@/xOpat</TargetDir>
