@@ -13,12 +13,12 @@ on:
         description: "Package version (e.g. 0.2.0). Required."
         required: true
         type: string
-      wsi_version:
-        description: "WSI-Service binary version (e.g. wsi-v1.0.1). Leave empty to keep current."
+      wsi_tag:
+        description: "WSI-Service tag (e.g. wsi-v1.0.2). Leave empty for latest."
         required: false
         type: string
-      xopat_version:
-        description: "xOpat binary version (e.g. xopat-v1.0.3). Leave empty to keep current."
+      xopat_tag:
+        description: "xOpat tag (e.g. xopat-v1.0.6). Leave empty for latest."
         required: false
         type: string
       branch:
@@ -57,7 +57,6 @@ jobs:
         working-directory: pypi
         run: |
           if [[ "${{ github.event_name }}" == "push" ]]; then
-            # Extract version from tag: pypi-v0.2.0 -> 0.2.0
             VERSION="${GITHUB_REF_NAME#pypi-v}"
           else
             VERSION="${{ inputs.package_version }}"
@@ -65,17 +64,29 @@ jobs:
           echo "Publishing version: $VERSION"
           sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
 
-      - name: Set binary versions
+      - name: Resolve binary tags
+        id: tags
+        run: |
+          if [ -n "${{ inputs.wsi_tag }}" ]; then
+            echo "wsi=${{ inputs.wsi_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "wsi=$(gh release list --json tagName -q '[.[] | select(.tagName | startswith("wsi-v"))][0].tagName')" >> $GITHUB_OUTPUT
+          fi
+          if [ -n "${{ inputs.xopat_tag }}" ]; then
+            echo "xopat=${{ inputs.xopat_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "xopat=$(gh release list --json tagName -q '[.[] | select(.tagName | startswith("xopat-v"))][0].tagName')" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Set binary versions in source
         working-directory: pypi
         run: |
-          if [[ -n "${{ inputs.wsi_version }}" ]]; then
-            echo "Setting WSI_VERSION to ${{ inputs.wsi_version }}"
-            sed -i 's/^WSI_VERSION = .*/WSI_VERSION = "${{ inputs.wsi_version }}"/' xopat/download.py
-          fi
-          if [[ -n "${{ inputs.xopat_version }}" ]]; then
-            echo "Setting XOPAT_VERSION to ${{ inputs.xopat_version }}"
-            sed -i 's/^XOPAT_VERSION = .*/XOPAT_VERSION = "${{ inputs.xopat_version }}"/' xopat/download.py
-          fi
+          echo "Setting WSI_VERSION to ${{ steps.tags.outputs.wsi }}"
+          sed -i "s/^WSI_VERSION = .*/WSI_VERSION = \"${{ steps.tags.outputs.wsi }}\"/" xopat/download.py
+          echo "Setting XOPAT_VERSION to ${{ steps.tags.outputs.xopat }}"
+          sed -i "s/^XOPAT_VERSION = .*/XOPAT_VERSION = \"${{ steps.tags.outputs.xopat }}\"/" xopat/download.py
 
       - name: Verify changes
         working-directory: pypi
@@ -107,7 +118,6 @@ jobs:
         with:
           name: dist
           path: dist/
-
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
@@ -126,5 +136,4 @@ jobs:
         with:
           name: dist
           path: dist/
-
       - uses: pypa/gh-action-pypi-publish@release/v1
