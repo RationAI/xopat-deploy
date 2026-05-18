@@ -9,7 +9,7 @@ import ctypes
 import pystray
 from PIL import Image
 
-XOPAT_URL = "http://localhost:9000/"
+XOPAT_URL = "http://localhost:9001/"
 
 
 def get_install_dir():
@@ -98,6 +98,8 @@ def load_tray_icon():
 
 def start_servers(install_dir):
     env = os.environ.copy()
+    env["WSI_PORT"] = "8050"
+    env["XOPAT_NODE_PORT"] = "9001"
     env["XOPAT_CACHE_DIR"] = os.path.join(install_dir, "xopat", "cache")
 
     wsi_exe = os.path.join(install_dir, "wsi-service", "wsi_service_binary.exe")

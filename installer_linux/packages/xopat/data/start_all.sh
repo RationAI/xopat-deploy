@@ -35,13 +35,15 @@ WSI_PID=$!
 cd "$BASEDIR"
 sleep 3
 echo "Starting xOpat..."
+export WSI_PORT=8050
+export XOPAT_NODE_PORT=9001
 export XOPAT_CACHE_DIR="$BASEDIR/xopat/cache"
 "$BASEDIR/xopat/xopat_binary" > "$BASEDIR/xopat.log" 2>&1 &
 XOPAT_PID=$!
 sleep 2
 echo "Slides folder: $DATA_DIR"
 echo "To change it, run change_slides_dir.sh and restart xOpat."
-xdg-open "http://localhost:9000/" 2>/dev/null
+xdg-open "http://localhost:9001/" 2>/dev/null
 
 echo "xOpat is running. Close this window to stop."
 wait
