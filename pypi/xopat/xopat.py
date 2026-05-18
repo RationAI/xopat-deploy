@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
+
 from .process import start_process, stop_process
+from .wsi import WSI_PORT
 
 XOPAT_PORT = 9001
 XOPAT_READY_URL = f"http://127.0.0.1:{XOPAT_PORT}"
@@ -20,7 +22,7 @@ def start_xopat(binary):
     env = os.environ.copy()
     env["XOPAT_CACHE_DIR"] = str(binary.parent / "cache")
     env["XOPAT_NODE_PORT"] = str(XOPAT_PORT)
-    env["XOPAT_CROSS_SITE_COOKIES"] = "true"
+    env["WSI_PORT"] = str(WSI_PORT)
 
     proc = start_process(binary, XOPAT_READY_URL, "xOpat", env=env)
 

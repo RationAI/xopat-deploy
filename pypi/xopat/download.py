@@ -8,7 +8,7 @@ GITHUB_REPO = "RationAI/xopat-deploy"
 # Default binary versions. Overridden during PyPI build
 # (see .github/workflows/pypi-publish.yml).
 WSI_VERSION = "wsi-v1.0.2"
-XOPAT_VERSION = "xopat-v1.0.5"
+XOPAT_VERSION = "xopat-v1.0.6"
 
 
 def get_platform():
@@ -36,20 +36,21 @@ def download_url(filename, tag):
     return f"https://github.com/{GITHUB_REPO}/releases/download/{tag}/{filename}"
 
 
-def _progress_hook(block_num, block_size, total_size):
+def progress_hook(block_num, block_size, total_size):
     downloaded = block_num * block_size
     if total_size > 0:
         pct = min(100, downloaded * 100 // total_size)
         mb = downloaded / (1024 * 1024)
         total_mb = total_size / (1024 * 1024)
-        print(f"\r  {mb:.1f}/{total_mb:.1f} MB ({pct}%)", end="", flush=True)
+        if int(mb) != int((downloaded - block_size) / (1024 * 1024)) or pct == 100:
+            print(f"\r  {mb:.1f}/{total_mb:.1f} MB ({pct}%)", end="", flush=True)
 
 
 def download_and_extract(url, dest_dir):
     dest_dir.mkdir(parents=True, exist_ok=True)
     zip_path = dest_dir / "download.zip"
     print(f"Downloading {url}")
-    urllib.request.urlretrieve(url, zip_path, reporthook=_progress_hook)
+    urllib.request.urlretrieve(url, zip_path, reporthook=progress_hook)
     print()
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(dest_dir)

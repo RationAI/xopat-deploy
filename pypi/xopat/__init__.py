@@ -3,10 +3,10 @@ import os
 from IPython.display import IFrame, display as _ipy_display
 
 from .download import get_wsi_binary, get_xopat_binary
-from .wsi import start_wsi_service, WSI_PORT
-from .xopat import start_xopat, XOPAT_PORT
+from .wsi import start_wsi_service
+from .xopat import start_xopat
 from .colab import is_colab, setup_colab, display_colab
-from .jupyterhub import is_jupyterhub, setup_jupyterhub, display_jupyterhub
+from .jupyterhub import setup_jupyterhub
 
 __all__ = ["setup_jupyterhub", "setup_colab", "run_server", "display", "Server"]
 
@@ -83,9 +83,6 @@ def display(server, slide, width="100%", height=800):
 
     if is_colab():
         display_colab(slide_q, width, height)
-    elif is_jupyterhub():
-        url = server.xopat_url + "/?slides=" + slide_q
-        display_jupyterhub(url, slide, width, height)
     else:
         url = server.xopat_url + "/?slides=" + slide_q
         _ipy_display(IFrame(url, width=width, height=height))
