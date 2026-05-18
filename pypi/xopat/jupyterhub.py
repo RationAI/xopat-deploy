@@ -69,3 +69,58 @@ def setup_jupyterhub(jupyterhub_host):
     os.environ["XOPAT_ENV"] = str(env_path)
     print(f"Configured for JupyterHub: {host}{xopat_path}")
 
+
+def display_jupyterhub(url, slide, width, height):
+    """Display a slide on JupyterHub with reload fallback."""
+    import hashlib
+    import time
+    from IPython.display import HTML, display as _ipy_display
+
+    uid = hashlib.md5(f"{slide}{time.time()}".encode()).hexdigest()[:8]
+    _ipy_display(HTML(f"""
+<div id="status-{uid}">Loading...</div>
+<iframe
+    id="frame-{uid}"
+    src="{url}"
+    width="{width}"
+    height="{height}"
+    style="border:1px solid #ccc; visibility: hidden;">
+</iframe>
+<script>
+(function() {{
+    const iframe = document.getElementById('frame-{uid}');
+    const status = document.getElementById('status-{uid}');
+    const maxRetries = 15;
+    let attempt = 0;
+    function isErrorPage() {{
+        try {{
+            const body = iframe.contentDocument?.body?.innerText || '';
+            return body.includes('500') || body.includes('Internal server error');
+        }} catch(e) {{
+            return false;
+        }}
+    }}
+    function retry() {{
+        if (attempt >= maxRetries) {{
+            status.textContent = 'Failed to load slide after 15 retries.';
+            iframe.style.visibility = 'visible';
+            return;
+        }}
+        attempt++;
+        status.textContent = 'Retrying... attempt ' + attempt + '/15';
+        setTimeout(() => {{
+            iframe.contentWindow.location.reload();
+        }}, 2000);
+    }}
+    iframe.onload = function() {{
+        if (isErrorPage()) {{
+            retry();
+        }} else {{
+            status.textContent = 'Ready.';
+            iframe.style.visibility = 'visible';
+        }}
+    }};
+}})();
+</script>
+"""))
+
