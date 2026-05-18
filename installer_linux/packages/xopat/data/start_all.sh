@@ -2,6 +2,12 @@
 BASEDIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="$BASEDIR/wsi-service/.env"
 
+# If xOpat is already running, just open the browser and exit immediately.
+if lsof -i :"${XOPAT_NODE_PORT:-9001}" -sTCP:LISTEN -t >/dev/null 2>&1; then
+    xdg-open "http://localhost:${XOPAT_NODE_PORT:-9001}/" 2>/dev/null
+    exit 0
+fi
+
 # First run: ask for slides directory if not set
 DATA_DIR=$(grep "^WS_DATA_DIR=" "$ENV_FILE" | cut -d'=' -f2)
 if [ -z "$DATA_DIR" ]; then
