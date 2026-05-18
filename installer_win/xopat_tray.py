@@ -1,10 +1,13 @@
 import os
 import sys
 import time
+import socket
 import threading
 import webbrowser
 import subprocess
 import ctypes
+import tkinter as tk
+from tkinter import filedialog, messagebox
 
 import pystray
 from PIL import Image
@@ -15,20 +18,17 @@ XOPAT_URL = f"http://localhost:{XOPAT_PORT}/"
 
 
 def get_install_dir():
-    """Return the xOpat installation root (parent of this exe's directory)."""
-    if getattr(sys, "frozen", False):
-        # Running as PyInstaller bundle inside xopat_tray_binary/
-        return os.path.dirname(os.path.dirname(sys.executable))
-    # Running as plain script from installer_win/
-    return os.path.dirname(os.path.abspath(__file__))
+    """Return the xOpat installation root directory."""
+    return os.path.dirname(os.path.dirname(sys.executable))
 
 
 def get_env_path(install_dir):
+    """Return path to the wsi-service .env file."""
     return os.path.join(install_dir, "wsi-service", ".env")
 
 
 def read_data_dir(env_path):
-    """Read WS_DATA_DIR value from .env file. Returns empty string if not set."""
+    """Read WS_DATA_DIR from .env file, or return empty string if not set."""
     if not os.path.exists(env_path):
         return ""
     with open(env_path, "r", encoding="utf-8") as f:
@@ -40,7 +40,7 @@ def read_data_dir(env_path):
 
 
 def write_data_dir(env_path, path):
-    """Write WS_DATA_DIR value into .env file, replacing the existing line."""
+    """Update WS_DATA_DIR in .env file."""
     if not os.path.exists(env_path):
         return
     with open(env_path, "r", encoding="utf-8") as f:
@@ -54,14 +54,7 @@ def write_data_dir(env_path, path):
 
 
 def prompt_data_dir(env_path, first_run=False):
-    """
-    Open a folder picker dialog and save the chosen path to .env.
-    Returns the chosen path, or None if the user cancelled.
-    On first_run, cancelling exits the application.
-    """
-    import tkinter as tk
-    from tkinter import filedialog, messagebox
-
+    """Show a folder picker and save the chosen path to .env. On first_run, cancelling exits the app."""
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
@@ -91,14 +84,12 @@ def prompt_data_dir(env_path, first_run=False):
 
 def load_tray_icon():
     """Load the xOpat logo for the system tray."""
-    if getattr(sys, "frozen", False):
-        base = os.path.join(os.path.dirname(sys.executable), "_internal")
-    else:
-        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+    base = os.path.join(os.path.dirname(sys.executable), "_internal")
     return Image.open(os.path.join(base, "xopat-logo.png"))
 
 
 def start_servers(install_dir):
+    """Launch wsi-service and xOpat, then open the browser."""
     env = os.environ.copy()
     env["WSI_PORT"] = str(WSI_PORT)
     env["XOPAT_NODE_PORT"] = str(XOPAT_PORT)
@@ -118,6 +109,7 @@ def start_servers(install_dir):
 
 
 def stop_servers(procs):
+    """Terminate all server processes."""
     for p in procs:
         p.terminate()
     time.sleep(2)
@@ -127,7 +119,7 @@ def stop_servers(procs):
 
 
 def restart_wsi(install_dir, procs):
-    """Terminate and relaunch only the wsi-service process (procs[0])."""
+    """Restart only the wsi-service process."""
     p = procs[0]
     p.terminate()
     time.sleep(2)
@@ -139,11 +131,44 @@ def restart_wsi(install_dir, procs):
     procs[0] = subprocess.Popen([wsi_exe], cwd=wsi_dir, creationflags=subprocess.CREATE_NO_WINDOW)
 
 
-def main():
+def set_dpi_awareness():
+    """Ensure sharp rendering on high-resolution screens."""
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except Exception:
         pass
+
+
+def is_port_in_use(port):
+    """Return True if something is already listening on the given port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("localhost", port)) == 0
+
+
+def on_open(icon, item):
+    """Open xOpat in the default browser."""
+    webbrowser.open(XOPAT_URL)
+
+
+def stop_and_exit(procs, icon):
+    """Stop all servers and close the tray icon."""
+    stop_servers(procs)
+    icon.stop()
+
+
+def change_and_restart(env_path, install_dir, procs):
+    """Prompt for a new slides folder and restart wsi-service."""
+    if prompt_data_dir(env_path):
+        restart_wsi(install_dir, procs)
+
+
+def main():
+    """Start servers and show the system tray."""
+    if is_port_in_use(XOPAT_PORT):
+        webbrowser.open(XOPAT_URL)
+        return
+
+    set_dpi_awareness()
 
     install_dir = get_install_dir()
     env_path = get_env_path(install_dir)
@@ -154,20 +179,12 @@ def main():
 
     procs = start_servers(install_dir)
 
-    def on_open(_icon, _):
-        webbrowser.open(XOPAT_URL)
+    # Defined here to capture procs, env_path, install_dir from this scope
+    def on_stop(icon, item):
+        threading.Thread(target=stop_and_exit, args=(procs, icon), daemon=True).start()
 
-    def on_change_data_dir(_icon, _):
-        def change_and_restart():
-            if prompt_data_dir(env_path):
-                restart_wsi(install_dir, procs)
-        threading.Thread(target=change_and_restart, daemon=True).start()
-
-    def on_stop(icon, _):
-        def stop_and_exit():
-            stop_servers(procs)
-            icon.stop()
-        threading.Thread(target=stop_and_exit, daemon=True).start()
+    def on_change_data_dir(icon, item):
+        threading.Thread(target=change_and_restart, args=(env_path, install_dir, procs), daemon=True).start()
 
     menu = pystray.Menu(
         pystray.MenuItem("Open xOpat", on_open, default=True),
