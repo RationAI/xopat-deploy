@@ -142,17 +142,16 @@ def display_colab(slide_q, width, height):
 
 
 def display_colab_post(session, width, height):
-    """Display a full session in Google Colab.
+    """Display a full session in Google Colab via URL-hash GET.
 
-    Colab's output iframe sandbox blocks form-target cross-origin POSTs
-    silently in many configurations, so we do the POST via fetch() with
-    JSON body (which DOES appear in DevTools and lets us see errors),
-    then write the response HTML into the iframe via document.write
-    after injecting a <base href> so xopat's relative URLs resolve
-    against the proxy origin."""
+    Colab's google.colab.kernel.proxyPort() forwards GET to the kernel
+    port but rejects POST with 404 at the Google edge proxy. xopat
+    natively supports a fallback: serialized session in the URL hash
+    (`<url>/#<urlencoded JSON>`), parsed client-side. Hash never hits
+    the network, so the proxy's method restriction is bypassed."""
     uid = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:8]
     import json as _json
-    payload_js = _json.dumps(_json.dumps(session))  # double-stringify → JS string literal
+    payload_js = _json.dumps(_json.dumps(session))  # → JS string literal
     _ipy_display(HTML(f"""
 <div id="xopat-status-{uid}" style="font-family: monospace; padding: 8px;">
     Loading xOpat viewer...
@@ -164,43 +163,16 @@ def display_colab_post(session, width, height):
 (async function() {{
     const status = document.getElementById('xopat-status-{uid}');
     const iframe = document.getElementById('xopat-frame-{uid}');
-    const log = (...a) => {{ console.log('[xopat-post]', ...a); }};
     try {{
-        log('resolving proxy port');
         status.textContent = 'Connecting to xOpat...';
         const raw = await google.colab.kernel.proxyPort({XOPAT_PORT});
         const proxyUrl = raw.replace(/\\/$/, '');
-        log('proxyUrl =', proxyUrl);
-
-        const body = {payload_js};
-        log('POSTing session, bytes:', body.length);
-        status.textContent = 'POSTing session...';
-        const res = await fetch(proxyUrl + '/', {{
-            method: 'POST',
-            credentials: 'include',
-            headers: {{'Content-Type': 'application/json'}},
-            body: body,
+        const session = {payload_js};
+        iframe.addEventListener('load', () => {{
+            status.textContent = 'xOpat ready.';
         }});
-        log('response', res.status, res.headers.get('content-type'));
-        if (!res.ok) {{
-            status.textContent = 'POST failed: ' + res.status;
-            return;
-        }}
-        let html = await res.text();
-        log('html length', html.length, 'has initXOpat:', html.includes('initXOpat('));
-
-        // Inject <base href> so relative URLs resolve against the proxy
-        if (!/<base\\s/i.test(html)) {{
-            html = html.replace(/<head([^>]*)>/i, '<head$1><base href="' + proxyUrl + '/">');
-        }}
-        const doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write(html);
-        doc.close();
-        status.textContent = 'xOpat loaded. Check the iframe console for runtime errors.';
-        log('document.write done');
+        iframe.src = proxyUrl + '/#' + encodeURIComponent(session);
     }} catch(e) {{
-        log('ERROR', e);
         status.textContent = 'Error: ' + (e && e.message ? e.message : e);
     }}
 }})();
