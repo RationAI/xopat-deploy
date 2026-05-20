@@ -3,6 +3,7 @@
 import json
 import os
 
+from ._post import attr as _attr, session_form_inputs as _session_form_inputs
 from .download import get_xopat_binary
 from .wsi import WSI_PORT
 from .xopat import XOPAT_PORT
@@ -122,5 +123,31 @@ def display_jupyterhub(url, slide, width, height):
     }};
 }})();
 </script>
+"""))
+
+
+def display_jupyterhub_post(xopat_url, session, width, height):
+    """Display a full session on JupyterHub via POST-into-iframe.
+
+    The proxied xopat URL is same-origin with the notebook, so a
+    standard form-target POST loads the response into the iframe with
+    xopat's URL as the document base."""
+    import hashlib
+    import time
+    from IPython.display import HTML, display as _ipy_display
+
+    uid = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:8]
+    action = xopat_url.rstrip("/") + "/"
+    inputs = _session_form_inputs(session)
+    _ipy_display(HTML(f"""
+<iframe name="xopat-frame-{uid}" id="xopat-frame-{uid}"
+        width="{_attr(width)}" height="{_attr(height)}"
+        style="border:1px solid #ccc;"></iframe>
+<form id="xopat-form-{uid}" method="POST"
+      action="{_attr(action)}"
+      target="xopat-frame-{uid}" style="display:none">
+{inputs}
+</form>
+<script>document.getElementById("xopat-form-{uid}").submit();</script>
 """))
 

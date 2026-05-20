@@ -1,12 +1,20 @@
+import hashlib
 import os
+import time
 
-from IPython.display import IFrame, display as _ipy_display
+from IPython.display import HTML, IFrame, display as _ipy_display
 
+from ._post import attr as _attr, session_form_inputs as _session_form_inputs
 from .download import get_wsi_binary, get_xopat_binary
 from .wsi import start_wsi_service
 from .xopat import start_xopat
-from .colab import is_colab, setup_colab, display_colab
-from .jupyterhub import setup_jupyterhub, is_jupyterhub, display_jupyterhub
+from .colab import is_colab, setup_colab, display_colab, display_colab_post
+from .jupyterhub import (
+    setup_jupyterhub,
+    is_jupyterhub,
+    display_jupyterhub,
+    display_jupyterhub_post,
+)
 
 __all__ = ["setup_jupyterhub", "setup_colab", "run_server", "display", "Server"]
 
@@ -71,21 +79,50 @@ def run_server(data_dir=None):
 
 def display(server, slide, width="100%", height=800):
     """
-    Display a slide in a Jupyter notebook iframe.
+    Display a slide or a full session in a Jupyter notebook iframe.
 
     Args:
         server: Server instance returned by run_server().
-        slide:  Slide identifier (path or URL) passed to xOpat.
+        slide:  Either a slide identifier (str) — opened via GET
+                `?slides=<id>` — or a full session config (dict) with
+                keys like ``data``, ``background``, ``visualizations``,
+                ``params``, ``plugins`` — POSTed into the viewer.
         width:  iframe width (CSS value, default "100%").
         height: iframe height in pixels (default 800).
     """
-    slide_q = slide.replace(">", "%3E")
+    if isinstance(slide, str):
+        slide_q = slide.replace(">", "%3E")
+        if is_colab():
+            display_colab(slide_q, width, height)
+        elif is_jupyterhub():
+            url = server.xopat_url + "/?slides=" + slide_q
+            display_jupyterhub(url, slide, width, height)
+        else:
+            url = server.xopat_url + "/?slides=" + slide_q
+            _ipy_display(IFrame(url, width=width, height=height))
+        return
 
-    if is_colab():
-        display_colab(slide_q, width, height)
-    elif is_jupyterhub():
-        url = server.xopat_url + "/?slides=" + slide_q
-        display_jupyterhub(url, slide, width, height)
-    else:
-        url = server.xopat_url + "/?slides=" + slide_q
-        _ipy_display(IFrame(url, width=width, height=height))
+    if isinstance(slide, dict):
+        if is_colab():
+            display_colab_post(slide, width, height)
+        elif is_jupyterhub():
+            display_jupyterhub_post(server.xopat_url, slide, width, height)
+        else:
+            uid = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:8]
+            inputs = _session_form_inputs(slide)
+            _ipy_display(HTML(f"""
+<iframe name="xopat-frame-{uid}" id="xopat-frame-{uid}"
+        width="{_attr(width)}" height="{_attr(height)}"
+        style="border:1px solid #ccc;"></iframe>
+<form id="xopat-form-{uid}" method="POST"
+      action="{_attr(server.xopat_url + '/')}"
+      target="xopat-frame-{uid}" style="display:none">
+{inputs}
+</form>
+<script>document.getElementById("xopat-form-{uid}").submit();</script>
+"""))
+        return
+
+    raise TypeError(
+        "display(): second argument must be a slide id (str) or a session config (dict)"
+    )

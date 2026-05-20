@@ -12,6 +12,7 @@ import time
 
 from IPython.display import HTML, display as _ipy_display
 
+from ._post import attr as _attr, session_form_inputs as _session_form_inputs
 from .download import get_wsi_binary, get_xopat_binary
 from .wsi import WSI_PORT
 from .xopat import XOPAT_PORT
@@ -132,6 +133,47 @@ def display_colab(slide_q, width, height):
             status.textContent = 'xOpat ready.';
         }};
         status.textContent = 'Connecting to xOpat...';
+    }} catch(e) {{
+        status.textContent = 'Error: ' + e.message;
+    }}
+}})();
+</script>
+"""))
+
+
+def display_colab_post(session, width, height):
+    """Display a full session in Google Colab via POST-into-iframe.
+
+    The proxied xopat URL must be resolved client-side via
+    google.colab.kernel.proxyPort, so we build the form synchronously
+    with a placeholder action and patch it in JS just before submit."""
+    uid = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:8]
+    inputs = _session_form_inputs(session)
+    _ipy_display(HTML(f"""
+<div id="xopat-status-{uid}" style="font-family: monospace; padding: 8px;">
+    Loading xOpat viewer...
+</div>
+<iframe name="xopat-frame-{uid}" id="xopat-frame-{uid}"
+        width="{_attr(width)}" height="{_attr(height)}"
+        style="border:1px solid #ccc; border-radius: 4px;"></iframe>
+<form id="xopat-form-{uid}" method="POST"
+      action=""
+      target="xopat-frame-{uid}" style="display:none">
+{inputs}
+</form>
+<script>
+(async function() {{
+    const status = document.getElementById('xopat-status-{uid}');
+    const form = document.getElementById('xopat-form-{uid}');
+    const iframe = document.getElementById('xopat-frame-{uid}');
+    try {{
+        status.textContent = 'Connecting to xOpat...';
+        const proxyUrl = await google.colab.kernel.proxyPort({XOPAT_PORT});
+        form.action = proxyUrl;
+        iframe.addEventListener('load', () => {{
+            status.textContent = 'xOpat ready.';
+        }});
+        form.submit();
     }} catch(e) {{
         status.textContent = 'Error: ' + e.message;
     }}
