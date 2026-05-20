@@ -1,4 +1,5 @@
 name: Publish to PyPI
+run-name: "Publish to PyPI v${{ inputs.package_version || github.ref_name }}"
 
 on:
   # Trigger on tag push: pypi-v0.2.0, pypi-v1.0.0, etc.
