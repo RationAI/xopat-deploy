@@ -122,7 +122,6 @@ def display_colab(slide_q, width, height):
         path=f"/?slides={slide_q}",
         width=str(width),
         height=str(height),
-        cache_in_notebook=True,
     )
 
 
@@ -140,7 +139,6 @@ def display_colab_post(session, width, height):
         path=f"/#{encoded}",
         width=str(width),
         height=str(height),
-        cache_in_notebook=True,
     )
 
 
