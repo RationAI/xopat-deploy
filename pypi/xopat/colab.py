@@ -102,6 +102,52 @@ def setup_colab():
     print("Configured for Google Colab.")
 
 
+_UNSUPPORTED_BROWSER_HTML = """
+<div style="border:1px solid #d97706;background:#fef3c7;color:#78350f;
+            padding:12px 16px;border-radius:6px;font-family:sans-serif;
+            line-height:1.5;max-width:720px;">
+  <strong>Browser not supported on Google Colab</strong><br>
+  Viewing slides via <code>xopat</code> on Google Colab currently requires a
+  Chromium-based browser (Chrome, Edge, Brave, etc.). On Safari and Firefox,
+  Colab's third-party iframe proxy can corrupt this notebook's runtime token
+  and leave the notebook unable to execute further cells (HTTP 500 errors).
+  <br><br>
+  Please open this notebook in Chrome. If this notebook is already in the
+  broken state, recover by either switching to Chrome, switching Colab
+  accounts, or making a copy (File &rarr; Save a copy in Drive) to get a
+  fresh runtime.
+</div>
+"""
+
+
+def _is_unsupported_colab_browser():
+    """Return True for Safari and Firefox on Colab; False otherwise.
+
+    Loading xopat's iframe via serve_kernel_port_as_iframe on Safari/Firefox
+    has been observed to corrupt the Colab notebook's runtime auth state,
+    breaking subsequent cell execution (kernel-execute calls return 500).
+    Avoid creating the iframe at all on those browsers until the root cause
+    is identified."""
+    try:
+        from google.colab.output import eval_js
+    except ImportError:
+        return False
+    try:
+        ua = eval_js("navigator.userAgent")
+    except Exception:
+        return False
+    if not isinstance(ua, str):
+        return False
+    is_firefox = "Firefox" in ua
+    is_safari = "Safari" in ua and "Chrome" not in ua and "Chromium" not in ua
+    return is_firefox or is_safari
+
+
+def _render_unsupported_browser_notice():
+    from IPython.display import HTML, display as _ipy_display
+    _ipy_display(HTML(_UNSUPPORTED_BROWSER_HTML))
+
+
 def display_colab(slide_q, width, height):
     """Display a slide in Google Colab via serve_kernel_port_as_iframe.
 
@@ -109,7 +155,14 @@ def display_colab(slide_q, width, height):
     so the iframe wrapper runs same-origin to the notebook output. Raw
     proxyPort URLs are on *.googleusercontent.com, which is 3rd-party
     to colab.research.google.com — Safari (ITP) blocks the auth cookies
-    for that context and the proxy then returns 404."""
+    for that context and the proxy then returns 404.
+
+    On Safari and Firefox the helper itself is unsafe (it can break the
+    notebook's runtime auth), so we render a notice instead of loading
+    the iframe."""
+    if _is_unsupported_colab_browser():
+        _render_unsupported_browser_notice()
+        return
     from google.colab.output import serve_kernel_port_as_iframe
     serve_kernel_port_as_iframe(
         XOPAT_PORT,
@@ -126,7 +179,12 @@ def display_colab_post(session, width, height):
     Session is serialized to JSON and placed in the URL fragment, which
     is never sent to the network — xopat parses it client-side. Uses
     serve_kernel_port_as_iframe so the load also works in Safari (see
-    display_colab for the cookie/ITP rationale)."""
+    display_colab for the cookie/ITP rationale).
+
+    On Safari and Firefox the helper is unsafe; see display_colab."""
+    if _is_unsupported_colab_browser():
+        _render_unsupported_browser_notice()
+        return
     from google.colab.output import serve_kernel_port_as_iframe
     encoded = _urlquote(json.dumps(session), safe="")
     serve_kernel_port_as_iframe(
