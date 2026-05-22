@@ -6,8 +6,9 @@ from IPython.display import HTML, IFrame, display as _ipy_display
 
 from ._post import attr as _attr, session_form_inputs as _session_form_inputs
 from .download import get_wsi_binary, get_xopat_binary
-from .wsi import start_wsi_service
-from .xopat import start_xopat
+from .process import free_port
+from .wsi import WSI_PORT, start_wsi_service
+from .xopat import XOPAT_PORT, start_xopat
 from .colab import is_colab, setup_colab, display_colab, display_colab_post
 from .jupyterhub import (
     setup_jupyterhub,
@@ -58,6 +59,9 @@ def run_server(data_dir=None):
 
     if data_dir is None:
         data_dir = "/content" if is_colab() else os.getcwd()
+
+    free_port(WSI_PORT, "WSI-Service")
+    free_port(XOPAT_PORT, "xOpat")
 
     if is_colab():
         setup_colab()
