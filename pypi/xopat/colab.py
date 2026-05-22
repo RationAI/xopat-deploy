@@ -35,14 +35,15 @@ def setup_colab():
     built-in proxy endpoint (/proxy/wsi/...), keeping everything on a
     single port.
 
+    `domain` is left empty so xopat resolves every URL against the
+    iframe's actual origin. Colab serves the same kernel port on two
+    aliases (*.googleusercontent.com and *.prod.colab.dev) and may pick
+    either one for the iframe — pre-capturing one alias and writing it
+    into the config breaks the other.
+
     Also fixes missing shared libraries (libtiff5 -> libtiff6 symlink).
     """
-    from google.colab.output import eval_js
-
     fix_colab_libs()
-
-    xopat_proxy = eval_js(f"google.colab.kernel.proxyPort({XOPAT_PORT})")
-    xopat_proxy = xopat_proxy.rstrip("/")
 
     config = {
           "core": {
@@ -50,7 +51,7 @@ def setup_colab():
               "active_client": "colab",
               "client": {
                   "colab": {
-                    "domain": xopat_proxy,
+                    "domain": "",
                     "path": "/",
                     "slide_protocols": {
                         "wsi_service": {
