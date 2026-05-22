@@ -4,15 +4,11 @@ Handles Colab-specific setup: proxy configuration, missing shared
 libraries, and iframe display via the proxyPort JS API.
 """
 
-import hashlib
 import json
 import os
 import subprocess
-import time
+from urllib.parse import quote as _urlquote
 
-from IPython.display import HTML, display as _ipy_display
-
-from ._post import attr as _attr, session_form_inputs as _session_form_inputs
 from .download import get_wsi_binary, get_xopat_binary
 from .wsi import WSI_PORT
 from .xopat import XOPAT_PORT
@@ -106,78 +102,39 @@ def setup_colab():
 
 
 def display_colab(slide_q, width, height):
-    """Display a slide in Google Colab using the proxyPort JS API."""
-    path = f"/?slides={slide_q}"
-    uid = hashlib.md5(f"{slide_q}{time.time()}".encode()).hexdigest()[:8]
+    """Display a slide in Google Colab via serve_kernel_port_as_iframe.
 
-    _ipy_display(HTML(f"""
-<div id="xopat-status-{uid}" style="font-family: monospace; padding: 8px;">
-    Loading xOpat viewer...
-</div>
-<div id="xopat-container-{uid}"></div>
-<script>
-(async function() {{
-    const status = document.getElementById('xopat-status-{uid}');
-    const container = document.getElementById('xopat-container-{uid}');
-    try {{
-        const proxyUrl = await google.colab.kernel.proxyPort({XOPAT_PORT});
-        const url = proxyUrl + '{path}';
-        const iframe = document.createElement('iframe');
-        iframe.src = url;
-        iframe.width = '{width}';
-        iframe.height = '{height}';
-        iframe.style.border = '1px solid #ccc';
-        iframe.style.borderRadius = '4px';
-        container.appendChild(iframe);
-        iframe.onload = function() {{
-            status.textContent = 'xOpat ready.';
-        }};
-        status.textContent = 'Connecting to xOpat...';
-    }} catch(e) {{
-        status.textContent = 'Error: ' + e.message;
-    }}
-}})();
-</script>
-"""))
+    Uses the Colab-supplied helper rather than raw kernel.proxyPort()
+    so the iframe wrapper runs same-origin to the notebook output. Raw
+    proxyPort URLs are on *.googleusercontent.com, which is 3rd-party
+    to colab.research.google.com — Safari (ITP) blocks the auth cookies
+    for that context and the proxy then returns 404."""
+    from google.colab.output import serve_kernel_port_as_iframe
+    serve_kernel_port_as_iframe(
+        XOPAT_PORT,
+        path=f"/?slides={slide_q}",
+        width=str(width),
+        height=str(height),
+        cache_in_notebook=True,
+    )
 
 
 def display_colab_post(session, width, height):
     """Display a full session in Google Colab via URL-hash GET.
 
-    Colab's google.colab.kernel.proxyPort() forwards GET to the kernel
-    port but rejects POST with 404 at the Google edge proxy. xopat
-    natively supports a fallback: serialized session in the URL hash
-    (`<url>/#<urlencoded JSON>`), parsed client-side. Hash never hits
-    the network, so the proxy's method restriction is bypassed."""
-    uid = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:8]
-    import json as _json
-    payload_js = _json.dumps(_json.dumps(session))  # → JS string literal
-    _ipy_display(HTML(f"""
-<div id="xopat-status-{uid}" style="font-family: monospace; padding: 8px;">
-    Loading xOpat viewer...
-</div>
-<iframe id="xopat-frame-{uid}"
-        width="{_attr(width)}" height="{_attr(height)}"
-        style="border:1px solid #ccc; border-radius: 4px;"></iframe>
-<script>
-(async function() {{
-    const status = document.getElementById('xopat-status-{uid}');
-    const iframe = document.getElementById('xopat-frame-{uid}');
-    try {{
-        status.textContent = 'Connecting to xOpat...';
-        const raw = await google.colab.kernel.proxyPort({XOPAT_PORT});
-        const proxyUrl = raw.replace(/\\/$/, '');
-        const session = {payload_js};
-        iframe.addEventListener('load', () => {{
-            status.textContent = 'xOpat ready.';
-        }});
-        iframe.src = proxyUrl + '/#' + encodeURIComponent(session);
-    }} catch(e) {{
-        status.textContent = 'Error: ' + (e && e.message ? e.message : e);
-    }}
-}})();
-</script>
-"""))
+    Session is serialized to JSON and placed in the URL fragment, which
+    is never sent to the network — xopat parses it client-side. Uses
+    serve_kernel_port_as_iframe so the load also works in Safari (see
+    display_colab for the cookie/ITP rationale)."""
+    from google.colab.output import serve_kernel_port_as_iframe
+    encoded = _urlquote(json.dumps(session), safe="")
+    serve_kernel_port_as_iframe(
+        XOPAT_PORT,
+        path=f"/#{encoded}",
+        width=str(width),
+        height=str(height),
+        cache_in_notebook=True,
+    )
 
 
 def fix_colab_libs():
