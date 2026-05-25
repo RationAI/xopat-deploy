@@ -118,7 +118,7 @@ def display(server, slide, width="100%", height=800):
         width="{_attr(width)}" height="{_attr(height)}"
         style="border:1px solid #ccc;"></iframe>
 <form id="xopat-form-{uid}" method="POST"
-      action="{_attr(server.xopat_url + '/')}"
+      action="{_attr(server.xopat_url.rstrip('/') + '/')}"
       target="xopat-frame-{uid}" style="display:none">
 {inputs}
 </form>
