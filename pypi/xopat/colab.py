@@ -107,41 +107,38 @@ def setup_colab():
     print("Configured for Google Colab.")
 
 
-def _colab_proxy_url():
-    """Resolve the Colab proxy URL for the xopat port. Reuses the cached
-    URL from setup_colab if available — kernel.proxyPort with cache:true
-    returns the same alias on repeat calls within a kernel session."""
-    from google.colab.output import eval_js
-    return eval_js(
-        f"google.colab.kernel.proxyPort({XOPAT_PORT}, {{cache: true}})"
-    ).rstrip("/")
-
-
 def display_colab(slide_q, width, height):
-    """Display a slide in Google Colab via a plain IFrame.
+    """Display a slide in Google Colab via serve_kernel_port_as_iframe.
 
-    Uses google.colab.kernel.proxyPort to resolve the proxy URL, then
-    renders an IPython.display.IFrame. serve_kernel_port_as_iframe was
-    tried but corrupts the Colab notebook runtime token (kernel-execute
-    returns 500 afterwards). The trade-off is that the iframe loads
-    from *.googleusercontent.com which is 3rd-party to colab.research.google.com:
-    Safari (ITP) and Firefox (ETP) block the auth cookies for that
-    context and the proxy returns 404. Chrome works."""
-    from IPython.display import IFrame, display as _ipy_display
-    url = f"{_colab_proxy_url()}/?slides={slide_q}"
-    _ipy_display(IFrame(url, width=width, height=height))
+    Uses the Colab-supplied helper so the iframe wrapper runs same-origin
+    to the notebook output. Raw proxyPort URLs are on
+    *.googleusercontent.com, which is 3rd-party to colab.research.google.com
+    — Safari (ITP) and Firefox (ETP) block the auth cookies for that
+    context and the proxy returns 404. The wrapper sidesteps that."""
+    from google.colab.output import serve_kernel_port_as_iframe
+    serve_kernel_port_as_iframe(
+        XOPAT_PORT,
+        path=f"/?slides={slide_q}",
+        width=str(width),
+        height=str(height),
+    )
 
 
 def display_colab_post(session, width, height):
     """Display a full session in Google Colab via URL-hash GET.
 
     Session is serialized to JSON and placed in the URL fragment, which
-    is never sent to the network — xopat parses it client-side. Same
-    iframe trade-off as display_colab regarding Safari/Firefox."""
-    from IPython.display import IFrame, display as _ipy_display
+    is never sent to the network — xopat parses it client-side. Uses
+    serve_kernel_port_as_iframe for the same Safari/Firefox reason as
+    display_colab."""
+    from google.colab.output import serve_kernel_port_as_iframe
     encoded = _urlquote(json.dumps(session), safe="")
-    url = f"{_colab_proxy_url()}/#{encoded}"
-    _ipy_display(IFrame(url, width=width, height=height))
+    serve_kernel_port_as_iframe(
+        XOPAT_PORT,
+        path=f"/#{encoded}",
+        width=str(width),
+        height=str(height),
+    )
 
 
 def fix_colab_libs():
