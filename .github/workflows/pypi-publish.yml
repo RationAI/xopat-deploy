@@ -1,0 +1,140 @@
+name: Publish to PyPI
+run-name: "Publish to ${{ inputs.target || 'pypi' }} v${{ inputs.package_version || github.ref_name }}"
+
+on:
+  # Trigger on tag push: pypi-v0.2.0, pypi-v1.0.0, etc.
+  push:
+    tags:
+      - "pypi-v*"
+
+  # Manual trigger with options
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: "Package version (e.g. 0.2.0). Required."
+        required: true
+        type: string
+      wsi_tag:
+        description: "WSI-Service tag (e.g. wsi-v1.0.2). Leave empty for latest."
+        required: false
+        type: string
+      xopat_tag:
+        description: "xOpat tag (e.g. xopat-v1.0.6). Leave empty for latest."
+        required: false
+        type: string
+      branch:
+        description: "Branch to build from (e.g. develop)"
+        required: false
+        type: string
+        default: develop
+      target:
+        description: "Publish target"
+        required: true
+        type: choice
+        options:
+          - testpypi
+          - pypi
+        default: testpypi
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Copy wsi_service.env
+        run: cp envs/wsi_service.env pypi/xopat/wsi_service.env
+
+      - name: Set package version
+        working-directory: pypi
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            VERSION="${GITHUB_REF_NAME#pypi-v}"
+          else
+            VERSION="${{ inputs.package_version }}"
+          fi
+          echo "Publishing version: $VERSION"
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+
+      - name: Resolve binary tags
+        id: tags
+        run: |
+          if [ -n "${{ inputs.wsi_tag }}" ]; then
+            echo "wsi=${{ inputs.wsi_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "wsi=$(gh release list --json tagName -q '[.[] | select(.tagName | startswith("wsi-v"))][0].tagName')" >> $GITHUB_OUTPUT
+          fi
+          if [ -n "${{ inputs.xopat_tag }}" ]; then
+            echo "xopat=${{ inputs.xopat_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "xopat=$(gh release list --json tagName -q '[.[] | select(.tagName | startswith("xopat-v"))][0].tagName')" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Set binary versions in source
+        working-directory: pypi
+        run: |
+          echo "Setting WSI_VERSION to ${{ steps.tags.outputs.wsi }}"
+          sed -i "s/^WSI_VERSION = .*/WSI_VERSION = \"${{ steps.tags.outputs.wsi }}\"/" xopat/download.py
+          echo "Setting XOPAT_VERSION to ${{ steps.tags.outputs.xopat }}"
+          sed -i "s/^XOPAT_VERSION = .*/XOPAT_VERSION = \"${{ steps.tags.outputs.xopat }}\"/" xopat/download.py
+
+      - name: Verify changes
+        working-directory: pypi
+        run: |
+          echo "=== pyproject.toml ==="
+          grep "^version" pyproject.toml
+          echo "=== download.py versions ==="
+          grep "VERSION" xopat/download.py
+
+      - name: Build package
+        working-directory: pypi
+        run: python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: pypi/dist/
+
+  publish-testpypi:
+    needs: build
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi')
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    needs: build
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
