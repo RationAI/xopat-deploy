@@ -35,20 +35,19 @@ def setup_colab():
     built-in proxy endpoint (/proxy/wsi/...), keeping everything on a
     single port.
 
-    `domain` is captured via google.colab.kernel.proxyPort so xopat's
-    own URL composition matches the Colab proxy alias the iframe is
-    loaded from. xopat fails CORE initialization with an empty domain
-    (it cannot compose absolute URLs for proxied wsi-service calls).
+    `domain` is set to the literal marker "__ORIGIN__" so xopat
+    substitutes window.location.origin at boot. Colab exposes each
+    kernel port under two aliases (*.googleusercontent.com and
+    *.prod.colab.dev); serve_kernel_port_as_iframe picks one and
+    google.colab.kernel.proxyPort returns the other. Pre-baking either
+    causes xopat's wsi-proxy fetch to be cross-origin to the iframe,
+    which preflights and fails with no Access-Control-Allow-Origin.
+    Using __ORIGIN__ keeps the fetch same-origin regardless of which
+    alias Colab chose. Requires xopat client support for the marker.
 
     Also fixes missing shared libraries (libtiff5 -> libtiff6 symlink).
     """
-    from google.colab.output import eval_js
-
     fix_colab_libs()
-
-    xopat_proxy = eval_js(
-        f"google.colab.kernel.proxyPort({XOPAT_PORT}, {{cache: true}})"
-    ).rstrip("/")
 
     config = {
           "core": {
@@ -56,7 +55,7 @@ def setup_colab():
               "active_client": "colab",
               "client": {
                   "colab": {
-                    "domain": xopat_proxy,
+                    "domain": "__ORIGIN__",
                     "path": "/",
                     "slide_protocols": {
                         "wsi_service": {

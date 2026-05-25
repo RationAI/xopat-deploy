@@ -1,6 +1,5 @@
-import hashlib
 import os
-import time
+import uuid
 
 from IPython.display import HTML, IFrame, display as _ipy_display
 
@@ -112,7 +111,7 @@ def display(server, slide, width="100%", height=800):
         elif is_jupyterhub():
             display_jupyterhub_post(server.xopat_url, slide, width, height)
         else:
-            uid = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:8]
+            uid = uuid.uuid4().hex[:8]
             inputs = _session_form_inputs(slide)
             _ipy_display(HTML(f"""
 <iframe name="xopat-frame-{uid}" id="xopat-frame-{uid}"

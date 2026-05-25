@@ -80,11 +80,10 @@ def setup_jupyterhub(jupyterhub_host):
 
 def display_jupyterhub(url, slide, width, height):
     """Display a slide on JupyterHub with reload fallback."""
-    import hashlib
-    import time
+    import uuid
     from IPython.display import HTML, display as _ipy_display
 
-    uid = hashlib.md5(f"{slide}{time.time()}".encode()).hexdigest()[:8]
+    uid = uuid.uuid4().hex[:8]
     _ipy_display(HTML(f"""
 <div id="status-{uid}">Loading...</div>
 <iframe
@@ -139,11 +138,10 @@ def display_jupyterhub_post(xopat_url, session, width, height):
     The proxied xopat URL is same-origin with the notebook, so a
     standard form-target POST loads the response into the iframe with
     xopat's URL as the document base."""
-    import hashlib
-    import time
+    import uuid
     from IPython.display import HTML, display as _ipy_display
 
-    uid = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:8]
+    uid = uuid.uuid4().hex[:8]
     action = xopat_url.rstrip("/") + "/"
     inputs = _session_form_inputs(session)
     _ipy_display(HTML(f"""
