@@ -1,4 +1,5 @@
 name: Build xOpat Linux
+run-name: "xOpat Linux ${{ inputs.tag || github.ref_name }} (ref=${{ inputs.ref || github.ref_name }})"
 
 on:
   push:
@@ -11,9 +12,8 @@ on:
         required: true
         type: string
       ref:
-        description: 'Branch to build from (e.g. develop)'
+        description: 'Branch to build from. Leave empty to use the branch selected above.'
         required: false
-        default: 'develop'
         type: string
 
 jobs:

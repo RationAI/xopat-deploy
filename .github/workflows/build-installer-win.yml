@@ -1,4 +1,5 @@
 name: Build Installer Windows
+run-name: "Installer Windows ${{ inputs.tag }} (xopat=${{ inputs.xopat_tag || 'latest' }}, wsi=${{ inputs.wsi_tag || 'latest' }}, ref=${{ inputs.ref || github.ref_name }})"
 
 on:
   workflow_dispatch:
@@ -16,9 +17,8 @@ on:
         required: false
         type: string
       ref:
-        description: 'Branch to build from (e.g. develop)'
+        description: 'Branch to build from. Leave empty to use the branch selected above.'
         required: false
-        default: 'develop'
         type: string
 jobs:
   build-installer-windows:
@@ -28,7 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.ref_name }}
 
       - name: Resolve tags
         id: tags
