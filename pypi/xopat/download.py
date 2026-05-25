@@ -1,5 +1,6 @@
 import os
 import platform
+import shutil
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -68,6 +69,8 @@ def get_wsi_binary():
         filename = f"wsi_service_binary_{plat}_{WSI_VERSION}.zip"
         url = download_url(filename, WSI_VERSION)
         download_and_extract(url, dest)
+    else:
+        print(f"WSI-Service: using cached binary {binary} ({WSI_VERSION})")
 
     if not binary.exists():
         raise FileNotFoundError(f"WSI-Service binary not found after download: {binary}")
@@ -88,6 +91,8 @@ def get_xopat_binary():
         filename = f"xopat_{plat}_{XOPAT_VERSION}.zip"
         url = download_url(filename, XOPAT_VERSION)
         download_and_extract(url, dest)
+    else:
+        print(f"xOpat: using cached binary {binary} ({XOPAT_VERSION})")
 
     if not binary.exists():
         raise FileNotFoundError(f"xOpat binary not found after download: {binary}")
@@ -96,3 +101,18 @@ def get_xopat_binary():
         binary.chmod(0o755)
 
     return binary
+
+
+def clear_binary_cache():
+    """Remove all cached WSI-Service and xOpat binaries.
+
+    Useful when a release was re-uploaded under the same tag and the
+    cache still holds the old build, or when debugging whether a
+    binary version mismatch is the cause of an observed bug. Next
+    run_server() call will re-download from GitHub Releases."""
+    root = get_binaries_dir()
+    if root.exists():
+        print(f"Clearing binary cache at {root}")
+        shutil.rmtree(root, ignore_errors=True)
+    else:
+        print(f"No binary cache to clear at {root}")

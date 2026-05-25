@@ -4,7 +4,7 @@ import uuid
 from IPython.display import HTML, IFrame, display as _ipy_display
 
 from ._post import attr as _attr, session_form_inputs as _session_form_inputs
-from .download import get_wsi_binary, get_xopat_binary
+from .download import clear_binary_cache, get_wsi_binary, get_xopat_binary
 from .process import free_port
 from .wsi import WSI_PORT, start_wsi_service
 from .xopat import XOPAT_PORT, start_xopat
@@ -16,7 +16,14 @@ from .jupyterhub import (
     display_jupyterhub_post,
 )
 
-__all__ = ["setup_jupyterhub", "setup_colab", "run_server", "display", "Server"]
+__all__ = [
+    "setup_jupyterhub",
+    "setup_colab",
+    "run_server",
+    "display",
+    "Server",
+    "clear_binary_cache",
+]
 
 
 class Server:

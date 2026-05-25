@@ -106,6 +106,45 @@ def setup_colab():
     print("Configured for Google Colab.")
 
 
+def _warn_if_private_browsing():
+    """Emit a one-time HTML notice in the cell output if the browser is
+    in private/incognito mode. Colab's kernel-port proxy relies on
+    storage that incognito strips, so the iframe document fetch 404s
+    even though run_server() and everything else looks fine. We can't
+    fix it from this side (no first-party context is reachable); the
+    best we can do is tell the user clearly instead of leaving them
+    with a silent broken iframe.
+
+    Detection heuristic: navigator.storage.estimate().quota is much
+    smaller in incognito (Chrome caps it around 120 MB) than in normal
+    mode (typically multiple GB). False positives on storage-constrained
+    devices are possible — the notice is worded as a heads-up, not a
+    hard block."""
+    from IPython.display import HTML, display as _ipy_display
+    _ipy_display(HTML("""
+<div id="xopat-incognito-warn" style="display:none;border:1px solid #d97706;
+     background:#fef3c7;color:#78350f;padding:10px 14px;border-radius:6px;
+     font-family:sans-serif;line-height:1.45;max-width:720px;margin:0 0 8px 0;">
+  <strong>Private / Incognito browsing detected.</strong>
+  Google Colab's kernel-port proxy needs storage that private/incognito
+  windows strip, so the xopat viewer iframe will fail to load (proxy
+  returns 404). Open this notebook in a regular browser window instead.
+</div>
+<script>
+(async function() {
+    try {
+        if (!navigator.storage || !navigator.storage.estimate) return;
+        const {quota} = await navigator.storage.estimate();
+        if (typeof quota === 'number' && quota < 200 * 1024 * 1024) {
+            const el = document.getElementById('xopat-incognito-warn');
+            if (el) el.style.display = 'block';
+        }
+    } catch (e) { /* ignore */ }
+})();
+</script>
+"""))
+
+
 def display_colab(slide_q, width, height):
     """Display a slide in Google Colab via serve_kernel_port_as_iframe.
 
@@ -113,7 +152,11 @@ def display_colab(slide_q, width, height):
     to the notebook output. Raw proxyPort URLs are on
     *.googleusercontent.com, which is 3rd-party to colab.research.google.com
     — Safari (ITP) and Firefox (ETP) block the auth cookies for that
-    context and the proxy returns 404. The wrapper sidesteps that."""
+    context and the proxy returns 404. The wrapper sidesteps that.
+
+    Incognito/private windows still fail the proxy auth even with the
+    wrapper; _warn_if_private_browsing renders a notice in those cases."""
+    _warn_if_private_browsing()
     from google.colab.output import serve_kernel_port_as_iframe
     serve_kernel_port_as_iframe(
         XOPAT_PORT,
@@ -130,6 +173,7 @@ def display_colab_post(session, width, height):
     is never sent to the network — xopat parses it client-side. Uses
     serve_kernel_port_as_iframe for the same Safari/Firefox reason as
     display_colab."""
+    _warn_if_private_browsing()
     from google.colab.output import serve_kernel_port_as_iframe
     encoded = _urlquote(json.dumps(session), safe="")
     serve_kernel_port_as_iframe(
