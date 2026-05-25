@@ -4,13 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xopat"
-version = "0.1.25"
+version = "0.1.26"
 description = "Launch WSI-Service backend and xOpat"
 requires-python = ">=3.9"
-dependencies = [
-    "ipython",
-    "jupyter-server-proxy"
-]
+# No pip-installable dependencies. We use IPython.display which already
+# ships with every Jupyter-like host (Colab, Jupyter, JupyterHub). Listing
+# `ipython` here caused `pip install --upgrade --force-reinstall` to swap
+# Colab's pinned ipython==7.34.0 for the latest, crashing the runtime.
+# `jupyter-server-proxy` was also listed but not imported anywhere — on
+# JupyterHub it is configured server-side, not via this package.
+dependencies = []
 
 [tool.setuptools.packages.find]
 where = ["."]

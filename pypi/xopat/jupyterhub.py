@@ -19,6 +19,13 @@ def setup_jupyterhub(jupyterhub_host):
     Configure xOpat for JupyterHub environment.
     Call this before run_server() when running on JupyterHub.
 
+    Requires `jupyter-server-proxy` to be installed in the JupyterHub
+    single-user server environment (not the notebook kernel — by then
+    it's too late). This package registers the `/proxy/<port>/...`
+    routes the generated xopat config relies on. Without it the
+    iframe will 404. Install it on the user-server image ahead of
+    time; pip-installing it from a notebook cell does not work.
+
     Args:
         jupyterhub_host: Full URL of JupyterHub, e.g. 'https://hub.example.com'
     """
