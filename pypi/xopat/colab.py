@@ -35,15 +35,20 @@ def setup_colab():
     built-in proxy endpoint (/proxy/wsi/...), keeping everything on a
     single port.
 
-    `domain` is left empty so xopat resolves every URL against the
-    iframe's actual origin. serve_kernel_port_as_iframe and our config
-    both used to call kernel.proxyPort independently, which may have
-    been corrupting Colab's port mapping; letting serve_kernel_port_as_iframe
-    be the only caller and using a relative-origin config sidesteps it.
+    `domain` is captured via google.colab.kernel.proxyPort so xopat's
+    own URL composition matches the Colab proxy alias the iframe is
+    loaded from. xopat fails CORE initialization with an empty domain
+    (it cannot compose absolute URLs for proxied wsi-service calls).
 
     Also fixes missing shared libraries (libtiff5 -> libtiff6 symlink).
     """
+    from google.colab.output import eval_js
+
     fix_colab_libs()
+
+    xopat_proxy = eval_js(
+        f"google.colab.kernel.proxyPort({XOPAT_PORT}, {{cache: true}})"
+    ).rstrip("/")
 
     config = {
           "core": {
@@ -51,7 +56,7 @@ def setup_colab():
               "active_client": "colab",
               "client": {
                   "colab": {
-                    "domain": "",
+                    "domain": xopat_proxy,
                     "path": "/",
                     "slide_protocols": {
                         "wsi_service": {
@@ -102,38 +107,41 @@ def setup_colab():
     print("Configured for Google Colab.")
 
 
-def display_colab(slide_q, width, height):
-    """Display a slide in Google Colab via serve_kernel_port_as_iframe.
+def _colab_proxy_url():
+    """Resolve the Colab proxy URL for the xopat port. Reuses the cached
+    URL from setup_colab if available — kernel.proxyPort with cache:true
+    returns the same alias on repeat calls within a kernel session."""
+    from google.colab.output import eval_js
+    return eval_js(
+        f"google.colab.kernel.proxyPort({XOPAT_PORT}, {{cache: true}})"
+    ).rstrip("/")
 
-    Uses the Colab-supplied helper rather than raw kernel.proxyPort()
-    so the iframe wrapper runs same-origin to the notebook output. Raw
-    proxyPort URLs are on *.googleusercontent.com, which is 3rd-party
-    to colab.research.google.com — Safari (ITP) blocks the auth cookies
-    for that context and the proxy then returns 404."""
-    from google.colab.output import serve_kernel_port_as_iframe
-    serve_kernel_port_as_iframe(
-        XOPAT_PORT,
-        path=f"/?slides={slide_q}",
-        width=str(width),
-        height=str(height),
-    )
+
+def display_colab(slide_q, width, height):
+    """Display a slide in Google Colab via a plain IFrame.
+
+    Uses google.colab.kernel.proxyPort to resolve the proxy URL, then
+    renders an IPython.display.IFrame. serve_kernel_port_as_iframe was
+    tried but corrupts the Colab notebook runtime token (kernel-execute
+    returns 500 afterwards). The trade-off is that the iframe loads
+    from *.googleusercontent.com which is 3rd-party to colab.research.google.com:
+    Safari (ITP) and Firefox (ETP) block the auth cookies for that
+    context and the proxy returns 404. Chrome works."""
+    from IPython.display import IFrame, display as _ipy_display
+    url = f"{_colab_proxy_url()}/?slides={slide_q}"
+    _ipy_display(IFrame(url, width=width, height=height))
 
 
 def display_colab_post(session, width, height):
     """Display a full session in Google Colab via URL-hash GET.
 
     Session is serialized to JSON and placed in the URL fragment, which
-    is never sent to the network — xopat parses it client-side. Uses
-    serve_kernel_port_as_iframe so the load also works in Safari (see
-    display_colab for the cookie/ITP rationale)."""
-    from google.colab.output import serve_kernel_port_as_iframe
+    is never sent to the network — xopat parses it client-side. Same
+    iframe trade-off as display_colab regarding Safari/Firefox."""
+    from IPython.display import IFrame, display as _ipy_display
     encoded = _urlquote(json.dumps(session), safe="")
-    serve_kernel_port_as_iframe(
-        XOPAT_PORT,
-        path=f"/#{encoded}",
-        width=str(width),
-        height=str(height),
-    )
+    url = f"{_colab_proxy_url()}/#{encoded}"
+    _ipy_display(IFrame(url, width=width, height=height))
 
 
 def fix_colab_libs():
