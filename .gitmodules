@@ -1,0 +1,6 @@
+[submodule "external/xopat"]
+	path = external/xopat
+	url = https://github.com/RationAI/xopat.git
+[submodule "external/wsi-service"]
+	path = external/wsi-service
+	url = https://github.com/RationAI/WSI-Service.git
