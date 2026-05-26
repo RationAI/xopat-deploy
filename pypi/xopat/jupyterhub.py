@@ -74,6 +74,8 @@ def setup_jupyterhub(jupyterhub_host):
     xopat_binary = get_xopat_binary()
     env_path = xopat_binary.parent / "xopat_env.json"
     env_path.write_text(json.dumps(config, indent=2))
+    # XOPAT_ENV doubles as the "user called setup_jupyterhub" sentinel
+    # for run_server's JupyterHub guard. Keep it the last side effect.
     os.environ["XOPAT_ENV"] = str(env_path)
     print(f"Configured for JupyterHub: {host}{xopat_path}")
 

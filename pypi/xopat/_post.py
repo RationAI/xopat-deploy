@@ -1,14 +1,11 @@
 """Shared helpers for POST-iframe session opening.
 
-xOpat v3's `responseViewer` reads the request body twice for the
-urlencoded content-type path: once via `decodeURIComponent` over the
-whole body, then once via `querystring.parse` per pair. Each parsed
-value is then fed through `readPostDataItem` which tries `JSON.parse`.
-
-We therefore encode the session as one form field per top-level key,
-where each value is the JSON-stringified content URL-encoded once. The
-browser adds the second encoding layer on submit, matching xOpat's
-double-decode.
+xopat's POST entry point parses the urlencoded request body into a
+key-value map, then JSON-parses each value. It looks up the session
+under a single top-level `visualization` key. We therefore emit a
+single form field named `visualization` whose value is the
+JSON-stringified session, URL-encoded once (the browser adds the
+second encoding layer on submit, matching the server's decode).
 """
 
 import html
@@ -17,19 +14,14 @@ from urllib.parse import quote as _urlquote
 
 
 def session_form_inputs(session):
-    """Render a session dict as hidden <input> tags suitable for a
-    form posting to xOpat's main page with the default urlencoded
-    enctype. Each top-level key becomes one input."""
+    """Render a session dict as a single hidden <input name="visualization">
+    whose value is the JSON-encoded session. xopat reads the POST body
+    as `{visualization: <session>}` — see the module docstring."""
     if not isinstance(session, dict):
         raise TypeError("session must be a dict")
-    parts = []
-    for k, v in session.items():
-        json_str = json.dumps(v, ensure_ascii=False)
-        encoded = _urlquote(json_str, safe="")
-        parts.append(
-            f'<input type="hidden" name="{html.escape(str(k), quote=True)}" value="{encoded}">'
-        )
-    return "\n".join(parts)
+    json_str = json.dumps(session, ensure_ascii=False)
+    encoded = _urlquote(json_str, safe="")
+    return f'<input type="hidden" name="visualization" value="{encoded}">'
 
 
 def attr(value):

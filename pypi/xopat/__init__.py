@@ -71,6 +71,21 @@ def run_server(data_dir=None):
 
     if is_colab():
         setup_colab()
+    elif is_jupyterhub() and not os.environ.get("XOPAT_ENV"):
+        # setup_jupyterhub() sets XOPAT_ENV as its last side effect; if
+        # we're on a hub and that var is missing, the user skipped the
+        # setup call. Without it the xopat binary boots its built-in
+        # "localhost" client config and every asset URL resolves to
+        # http://localhost:9001 — unreachable through the hub proxy and
+        # confusing to debug. Fail loud instead.
+        raise RuntimeError(
+            "Detected JupyterHub but xopat is not configured. Call "
+            "setup_jupyterhub('https://your-hub-host') before "
+            "run_server() — without it, the xopat binary uses a "
+            "built-in localhost client config and every asset URL "
+            "resolves to http://localhost:9001, which is not "
+            "reachable through the hub proxy."
+        )
 
     wsi_binary = get_wsi_binary()
     xopat_binary = get_xopat_binary()
