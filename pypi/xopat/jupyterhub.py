@@ -34,8 +34,8 @@ def setup_jupyterhub(jupyterhub_host):
     if not prefix:
         raise RuntimeError("JUPYTERHUB_SERVICE_PREFIX not set - are you on JupyterHub?")
 
-    wsi_path = f"{prefix}/proxy/{WSI_PORT}"
-    xopat_path = f"{prefix}/proxy/{XOPAT_PORT}"
+    wsi_path = f"{prefix}/proxy/{WSI_PORT}/"
+    xopat_path = f"{prefix}/proxy/{XOPAT_PORT}/"
 
     config = {
         "core": {
@@ -47,7 +47,7 @@ def setup_jupyterhub(jupyterhub_host):
                     "path": xopat_path,
                     "slide_protocols": {
                         "wsi_service": {
-                            "url": f"`{wsi_path}/v3/slides/info?slide_id=${{data}}`",
+                            "url": f"`{wsi_path}v3/slides/info?slide_id=${{data}}`",
                         }
                     },
                     "default_background_protocol": "wsi_service",
