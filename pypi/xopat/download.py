@@ -104,15 +104,25 @@ def get_xopat_binary():
 
 
 def clear_binary_cache():
-    """Remove all cached WSI-Service and xOpat binaries.
+    """Remove cached WSI-Service and xOpat binaries.
 
     Useful when a release was re-uploaded under the same tag and the
-    cache still holds the old build, or when debugging whether a
-    binary version mismatch is the cause of an observed bug. Next
-    run_server() call will re-download from GitHub Releases."""
+    cache still holds the old build, or when debugging a binary
+    version mismatch. Next run_server() call will re-download from
+    GitHub Releases.
+
+    Only clears the binary subdirectories (`wsi/`, `xopat/`); leaves
+    sibling files like `xopat_env.json` alone — those are
+    configuration, not cache, and destroying them between
+    setup_jupyterhub/setup_colab and run_server breaks the viewer
+    boot."""
     root = get_binaries_dir()
-    if root.exists():
-        print(f"Clearing binary cache at {root}")
-        shutil.rmtree(root, ignore_errors=True)
-    else:
-        print(f"No binary cache to clear at {root}")
+    cleared = False
+    for sub in ("wsi", "xopat"):
+        p = root / sub
+        if p.exists():
+            print(f"Clearing {p}")
+            shutil.rmtree(p, ignore_errors=True)
+            cleared = True
+    if not cleared:
+        print(f"No binary cache to clear under {root}")

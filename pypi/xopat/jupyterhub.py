@@ -4,7 +4,7 @@ import json
 import os
 
 from ._post import attr as _attr, session_form_inputs as _session_form_inputs
-from .download import get_xopat_binary
+from .download import get_binaries_dir
 from .wsi import WSI_PORT
 from .xopat import XOPAT_PORT
 
@@ -71,8 +71,8 @@ def setup_jupyterhub(jupyterhub_host):
         },
     }
 
-    xopat_binary = get_xopat_binary()
-    env_path = xopat_binary.parent / "xopat_env.json"
+    env_path = get_binaries_dir() / "xopat_env.json"
+    env_path.parent.mkdir(parents=True, exist_ok=True)
     env_path.write_text(json.dumps(config, indent=2))
     # XOPAT_ENV doubles as the "user called setup_jupyterhub" sentinel
     # for run_server's JupyterHub guard. Keep it the last side effect.

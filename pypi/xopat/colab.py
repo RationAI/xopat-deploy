@@ -9,7 +9,7 @@ import os
 import subprocess
 from urllib.parse import quote as _urlquote
 
-from .download import get_wsi_binary, get_xopat_binary
+from .download import get_binaries_dir, get_wsi_binary
 from .wsi import WSI_PORT
 from .xopat import XOPAT_PORT
 
@@ -97,8 +97,8 @@ def setup_colab():
     }
 
 
-    xopat_binary = get_xopat_binary()
-    env_path = xopat_binary.parent / "xopat_env.json"
+    env_path = get_binaries_dir() / "xopat_env.json"
+    env_path.parent.mkdir(parents=True, exist_ok=True)
     env_path.write_text(json.dumps(config, indent=2))
     os.environ["XOPAT_ENV"] = str(env_path)
     os.environ["XOPAT_CROSS_SITE_COOKIES"] = "true"
