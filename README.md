@@ -26,13 +26,21 @@ subprocesses, then exposes them as an iframe in your notebook cell.
 
 ```python
 !pip install xopat
-from xopat import run_server, display
+import xopat
+from xopat import run_server
 
+# before running the server, setup proxy if needed (see JupyterHub)
 server = run_server(data_dir="/path/to/slides")
-display(server, "slide.tiff")
+xopat.display(server, "slide.tiff")
 # or with a full viewer session:
-display(server, {"data": ["slide.tiff"], "background": [{"dataReference": 0}]})
+xopat.display(server, {"data": ["slide.tiff"], "background": [{"dataReference": 0}]})
 ```
+
+> **Use `xopat.display(...)`, not bare `display(...)`.** Jupyter / Colab
+> auto-inject `display` from `IPython.display` into the notebook
+> namespace; calling `from xopat import display` works on some hosts but
+> is reliably shadowed on Colab. Going through the module avoids the
+> footgun.
 
 The package supports three notebook hosts. `run_server()` detects the host
 automatically; you only need an explicit setup call on JupyterHub.
@@ -47,15 +55,26 @@ Just works. The viewer is loaded through Colab's `serve_kernel_port_as_iframe`
 helper so the wrapper is same-origin to the notebook output, which keeps
 Safari (ITP) and Firefox (ETP) happy alongside Chrome.
 
+**Known limitation: private / incognito windows.** Colab's kernel-port
+proxy needs browser storage that private windows strip, so the viewer
+iframe returns 404 even though `run_server()` succeeds. `display()`
+shows a heads-up notice when it detects this; the fix is to open the
+notebook in a regular window.
+
 ### JupyterHub
 
-Call `setup_jupyterhub(<hub_url>)` before `run_server()`:
+**Call `setup_jupyterhub(<hub_url>)` before `run_server()`** —
+without it, the xopat binary boots with its built-in localhost
+client and every asset URL resolves to `http://localhost:9001`,
+unreachable through the hub proxy. `run_server()` will raise a
+clear `RuntimeError` if you skip the call.
 
 ```python
-from xopat import setup_jupyterhub, run_server, display
-setup_jupyterhub("https://hub.example.com")
+import xopat
+from xopat import setup_jupyterhub, run_server
+setup_jupyterhub("https://hub.example.com")   # MUST come first
 server = run_server()
-display(server, "slide.tiff")
+xopat.display(server, "slide.tiff")
 ```
 
 **JupyterHub admin requirement**: `jupyter-server-proxy` must be installed
