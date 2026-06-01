@@ -50,11 +50,11 @@ def setup_colab():
     fix_colab_libs()
 
     config = {
-          "core": {
-              "gateway": "/",
-              "active_client": "colab",
-              "client": {
-                  "colab": {
+        "core": {
+            "gateway": "/",
+            "active_client": "colab",
+            "client": {
+                "colab": {
                     "domain": "__ORIGIN__",
                     "path": "/",
                     "slide_protocols": {
@@ -71,29 +71,36 @@ def setup_colab():
                     "js_cookie_same_site": "",
                     "js_cookie_secure": "",
                     "secureMode": False,
+                    "pluginSelectionMode": True
                 }
-              },
-              "setup": {"locale": "en", "theme": "auto"},
-              "server": {
-                  "secure": {
-                      "proxies": {
-                          "wsi": {
-                              "baseUrl": f"http://127.0.0.1:{WSI_PORT}",
-                              "auth": {
-                                  "enabled": False
-                              }
-                          }
-                      }
-                  }
-              },
-          },
-          "plugins": {
-              "slide-info": {"permaLoad": True},
-          },
-          "modules": {
-              "rationai-wsi-tile-source": {"permaLoad": True},
-              "mlflow": {"enabled": False},
-          },
+            },
+            "setup": {
+                "locale": "en",
+                "theme": "auto",
+                "disablePluginsUi": True,
+                "scrollRequiresCtrl": True,
+                "bypassCloseConfirmation": True
+            },
+            "server": {
+                "secure": {
+                    "proxies": {
+                        "wsi": {
+                            "baseUrl": f"http://127.0.0.1:{WSI_PORT}",
+                            "auth": {
+                                "enabled": False
+                            }
+                        }
+                    }
+                }
+            },
+        },
+        "plugins": {
+            "slide-info": {"permaLoad": True},
+        },
+        "modules": {
+            "rationai-wsi-tile-source": {"permaLoad": True},
+            "mlflow": {"enabled": False},
+        },
     }
 
 
@@ -102,7 +109,6 @@ def setup_colab():
     env_path.write_text(json.dumps(config, indent=2))
     os.environ["XOPAT_ENV"] = str(env_path)
     os.environ["XOPAT_CROSS_SITE_COOKIES"] = "true"
-
     print("Configured for Google Colab.")
 
 

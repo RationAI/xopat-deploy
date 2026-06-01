@@ -58,16 +58,23 @@ def setup_jupyterhub(jupyterhub_host):
                     "js_cookie_same_site": "",
                     "js_cookie_secure": "",
                     "secureMode": False,
+                    "pluginSelectionMode": True
                 }
             },
-            "setup": {"locale": "en", "theme": "auto"},
+            "setup": {
+                "locale": "en",
+                "theme": "auto",
+                "disablePluginsUi": True,
+                "scrollRequiresCtrl": True,
+                "bypassCloseConfirmation": True
+            },
         },
         "plugins": {
             "slide-info": {"permaLoad": True},
+            "extra-tutorials": {"enabled": "true"}
         },
         "modules": {
             "rationai-wsi-tile-source": {"permaLoad": True},
-            "mlflow": {"enabled": False},
         },
     }
 
