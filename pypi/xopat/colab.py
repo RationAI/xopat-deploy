@@ -7,8 +7,10 @@ libraries, and iframe display via the proxyPort JS API.
 import json
 import os
 import subprocess
+import uuid
 from urllib.parse import quote as _urlquote
 
+from ._post import attr as _attr
 from .download import get_binaries_dir, get_wsi_binary
 from .wsi import WSI_PORT
 from .xopat import XOPAT_PORT
@@ -71,7 +73,7 @@ def setup_colab():
                     "js_cookie_same_site": "",
                     "js_cookie_secure": "",
                     "secureMode": False,
-                    "pluginSelectionMode": True
+                    "pluginSelectionMode": False
                 }
             },
             "setup": {
@@ -79,7 +81,16 @@ def setup_colab():
                 "theme": "auto",
                 "disablePluginsUi": True,
                 "scrollRequiresCtrl": True,
-                "bypassCloseConfirmation": True
+                "bypassCloseConfirmation": True,
+                "ui": {
+                    "scaleBar": True,
+                    "toolBar": False,
+                    "statusBar": True,
+                    "mainMenu": True,
+                    "navigator": True,
+                    "appBar": True,
+                    "globalMenu": False
+                },
             },
             "server": {
                 "secure": {
@@ -151,6 +162,151 @@ def _warn_if_private_browsing():
 """))
 
 
+def _proxy_port_url():
+    """Return the absolute *.googleusercontent.com proxy URL for XOPAT_PORT,
+    or '' if the lookup fails. Used to build an "Open in new tab" escape
+    hatch — a real tab bypasses Colab's parent-frame postMessage bridge
+    entirely, which is where the input-routing wedge lives."""
+    try:
+        from google.colab.output import eval_js
+        url = eval_js(f"google.colab.kernel.proxyPort({XOPAT_PORT})")
+        return (url or "").rstrip("/")
+    except Exception:
+        return ""
+
+
+def _render_recovery_toolbar(path):
+    """Render a thin toolbar BELOW the just-mounted Colab kernel-port
+    iframe. Carries two recovery affordances for the silent
+    "iframe loads but input stops reaching it" freeze:
+
+      * Reload viewer: locates the most recent iframe in this output cell
+        whose src matches a Colab proxy host, then removes and reinserts
+        it. Pure src= reassignment is not enough — Colab's parent bridge
+        keys its postMessage routing off the old element identity; only a
+        fresh node forces re-registration.
+      * Open in new tab: opens the same proxyPort URL in a real tab where
+        Colab's bridge is not in the path at all. Last-resort recovery
+        when even reload doesn't unstick events.
+
+    Also surfaces an accumulation warning if more than one proxy iframe
+    is present in the document — stale iframes from prior cell runs are
+    a frequent cause of "input swallowed" in Colab."""
+    base = _proxy_port_url()
+    abs_url = (base + path) if base else ""
+    uid = uuid.uuid4().hex[:8]
+    from IPython.display import HTML, display as _ipy_display
+    _ipy_display(HTML(f"""
+<div id="xopat-bar-{uid}" style="display:flex;align-items:center;gap:8px;
+     margin:6px 0;font-family:sans-serif;font-size:13px;color:#374151;">
+  <button id="xopat-reload-{uid}" type="button"
+          style="padding:4px 10px;border:1px solid #d1d5db;background:#f9fafb;
+                 border-radius:4px;cursor:pointer;">Reload viewer</button>
+  <a id="xopat-open-{uid}" href="{_attr(abs_url)}" target="_blank" rel="noopener"
+     style="padding:4px 10px;border:1px solid #d1d5db;background:#f9fafb;
+            border-radius:4px;color:#374151;text-decoration:none;">Open in new tab</a>
+  <span id="xopat-status-{uid}" style="margin-left:6px;color:#6b7280;">Loading…</span>
+</div>
+<script>
+(function() {{
+    const script = document.currentScript;
+    const status = document.getElementById('xopat-status-{uid}');
+    const proxyHostSel = 'iframe[src*="googleusercontent.com"], iframe[src*="prod.colab.dev"]';
+
+    function findOwnIframe() {{
+        // Walk up from our script to find the nearest ancestor that
+        // contains a Colab proxy iframe — scopes us to this output cell
+        // rather than picking up iframes from sibling cells.
+        let node = script;
+        while (node) {{
+            const parent = node.parentElement;
+            if (!parent) break;
+            const frames = parent.querySelectorAll(proxyHostSel);
+            if (frames.length) return frames[frames.length - 1];
+            node = parent;
+        }}
+        return null;
+    }}
+
+    function updateAccumulationWarning() {{
+        const all = document.querySelectorAll(proxyHostSel);
+        if (all.length > 1) {{
+            status.textContent = all.length + ' viewer iframes in this notebook — '
+                + 'older outputs may swallow input. Try Cell → Clear All Output.';
+            status.style.color = '#a16207';
+        }}
+    }}
+
+    const iframe = findOwnIframe();
+    if (iframe) {{
+        // iframes don't have a synchronous "loaded" flag (.complete is for
+        // <img>); listen for load. If the iframe was already loaded before
+        // our script ran (cached), the load event won't fire — fall back
+        // to a short timer that flips the status optimistically.
+        let settled = false;
+        const markReady = () => {{
+            if (settled) return;
+            settled = true;
+            status.textContent = 'Viewer ready.';
+            updateAccumulationWarning();
+        }};
+        iframe.addEventListener('load', markReady, {{once: true}});
+        setTimeout(markReady, 3000);
+    }} else {{
+        status.textContent = 'Could not locate viewer iframe.';
+    }}
+    updateAccumulationWarning();
+
+    document.getElementById('xopat-reload-{uid}').addEventListener('click', function() {{
+        const f = findOwnIframe();
+        if (!f) {{ status.textContent = 'Could not find iframe to reload.'; return; }}
+        status.textContent = 'Reloading…';
+        status.style.color = '#6b7280';
+        const parent = f.parentNode;
+        const next = f.nextSibling;
+        const src = f.src;
+        parent.removeChild(f);
+        // Build a fresh element rather than reassigning src on the old one.
+        // Colab's parent postMessage bridge ties routing to the original
+        // node; a brand-new node forces it to re-register the listener.
+        const fresh = document.createElement('iframe');
+        for (const a of f.attributes) fresh.setAttribute(a.name, a.value);
+        fresh.src = src;
+        fresh.addEventListener('load', function() {{
+            status.textContent = 'Reloaded.';
+            updateAccumulationWarning();
+        }}, {{once: true}});
+        parent.insertBefore(fresh, next);
+    }});
+}})();
+</script>
+"""))
+
+
+def _display_colab_with_recovery(path, width, height):
+    """Shared body of display_colab / display_colab_post.
+
+    Order matters:
+      1. clear_output(wait=True) — defends against the same cell stacking
+         multiple iframes when display() is called more than once per cell.
+         Cell re-runs already clear; this catches in-cell repeat calls.
+      2. private-browsing warning — must come before the iframe so the
+         user sees it even if the iframe then 404s.
+      3. serve_kernel_port_as_iframe — Colab appends its iframe here.
+      4. recovery toolbar — appended after, sits below the iframe."""
+    from IPython.display import clear_output
+    from google.colab.output import serve_kernel_port_as_iframe
+    clear_output(wait=True)
+    _warn_if_private_browsing()
+    serve_kernel_port_as_iframe(
+        XOPAT_PORT,
+        path=path,
+        width=str(width),
+        height=str(height),
+    )
+    _render_recovery_toolbar(path)
+
+
 def display_colab(slide_q, width, height):
     """Display a slide in Google Colab via serve_kernel_port_as_iframe.
 
@@ -161,15 +317,18 @@ def display_colab(slide_q, width, height):
     context and the proxy returns 404. The wrapper sidesteps that.
 
     Incognito/private windows still fail the proxy auth even with the
-    wrapper; _warn_if_private_browsing renders a notice in those cases."""
-    _warn_if_private_browsing()
-    from google.colab.output import serve_kernel_port_as_iframe
-    serve_kernel_port_as_iframe(
-        XOPAT_PORT,
-        path=f"/?slides={slide_q}",
-        width=str(width),
-        height=str(height),
-    )
+    wrapper; _warn_if_private_browsing renders a notice in those cases.
+
+    Known freeze mode: the iframe sometimes stops receiving mouse and
+    keyboard input even though the page inside is still alive (status
+    bar updates, animations keep running). Cause is browser-tab-scoped
+    state in Colab's parent postMessage bridge that survives kernel
+    restarts. The toolbar rendered alongside the iframe carries a
+    "Reload viewer" button (re-creates the iframe element, which forces
+    Colab to re-register its event routing) and an "Open in new tab"
+    link (bypasses the bridge entirely). If neither works, closing and
+    reopening the browser tab is the only known full recovery."""
+    _display_colab_with_recovery(f"/?slides={slide_q}", width, height)
 
 
 def display_colab_post(session, width, height):
@@ -178,16 +337,10 @@ def display_colab_post(session, width, height):
     Session is serialized to JSON and placed in the URL fragment, which
     is never sent to the network — xopat parses it client-side. Uses
     serve_kernel_port_as_iframe for the same Safari/Firefox reason as
-    display_colab."""
-    _warn_if_private_browsing()
-    from google.colab.output import serve_kernel_port_as_iframe
+    display_colab, and ships the same Reload/Open-in-new-tab recovery
+    toolbar for the input-wedge case described there."""
     encoded = _urlquote(json.dumps(session), safe="")
-    serve_kernel_port_as_iframe(
-        XOPAT_PORT,
-        path=f"/#{encoded}",
-        width=str(width),
-        height=str(height),
-    )
+    _display_colab_with_recovery(f"/#{encoded}", width, height)
 
 
 def fix_colab_libs():

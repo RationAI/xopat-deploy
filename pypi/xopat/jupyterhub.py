@@ -58,7 +58,7 @@ def setup_jupyterhub(jupyterhub_host):
                     "js_cookie_same_site": "",
                     "js_cookie_secure": "",
                     "secureMode": False,
-                    "pluginSelectionMode": True
+                    "pluginSelectionMode": False
                 }
             },
             "setup": {
@@ -66,7 +66,16 @@ def setup_jupyterhub(jupyterhub_host):
                 "theme": "auto",
                 "disablePluginsUi": True,
                 "scrollRequiresCtrl": True,
-                "bypassCloseConfirmation": True
+                "bypassCloseConfirmation": True,
+                "ui": {
+                    "scaleBar": True,
+                    "toolBar": False,
+                    "statusBar": True,
+                    "mainMenu": True,
+                    "navigator": True,
+                    "appBar": True,
+                    "globalMenu": False
+                },
             },
         },
         "plugins": {
