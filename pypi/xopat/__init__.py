@@ -1,9 +1,13 @@
 import os
 import uuid
 
-from IPython.display import HTML, IFrame, display as _ipy_display
+from IPython.display import HTML, display as _ipy_display
 
-from ._post import attr as _attr, session_form_inputs as _session_form_inputs
+from ._post import (
+    attr as _attr,
+    iframe_style as _iframe_style,
+    session_form_inputs as _session_form_inputs,
+)
 from .download import clear_binary_cache, get_wsi_binary, get_xopat_binary
 from .process import free_port
 from .wsi import WSI_PORT, start_wsi_service
@@ -102,7 +106,10 @@ def run_server(data_dir=None):
     return Server.running
 
 
-def display(server, slide, width="100%", height=800):
+_DEFAULT_HEIGHT = 800
+
+
+def display(server, slide, width="100%", height=None):
     """
     Display a slide or a full session in a Jupyter notebook iframe.
 
@@ -113,32 +120,44 @@ def display(server, slide, width="100%", height=800):
                 keys like ``data``, ``background``, ``visualizations``,
                 ``params``, ``plugins`` — POSTed into the viewer.
         width:  iframe width (CSS value, default "100%").
-        height: iframe height in pixels (default 800).
+        height: iframe height in pixels. Default (None) renders at 800 px
+                but is capped at 70 % of the browser window so the viewer
+                doesn't crowd out the notebook on short screens. Pass an
+                explicit number (e.g. ``height=1200``) to opt out of the
+                cap entirely.
     """
+    cap_height = height is None
+    height_value = _DEFAULT_HEIGHT if cap_height else height
+
     if isinstance(slide, str):
         slide_q = slide.replace(">", "%3E")
         if is_colab():
-            display_colab(slide_q, width, height)
+            display_colab(slide_q, width, height_value, cap_height)
         elif is_jupyterhub():
             url = server.xopat_url + "/?slides=" + slide_q
-            display_jupyterhub(url, slide, width, height)
+            display_jupyterhub(url, slide, width, height_value, cap_height)
         else:
+            uid = uuid.uuid4().hex[:8]
             url = server.xopat_url + "/?slides=" + slide_q
-            _ipy_display(IFrame(url, width=width, height=height))
+            _ipy_display(HTML(
+                f'<iframe id="xopat-frame-{uid}" src="{_attr(url)}" '
+                f'style="{_iframe_style(width, height_value, cap_height)}"></iframe>'
+            ))
         return
 
     if isinstance(slide, dict):
         if is_colab():
-            display_colab_post(slide, width, height)
+            display_colab_post(slide, width, height_value, cap_height)
         elif is_jupyterhub():
-            display_jupyterhub_post(server.xopat_url, slide, width, height)
+            display_jupyterhub_post(
+                server.xopat_url, slide, width, height_value, cap_height
+            )
         else:
             uid = uuid.uuid4().hex[:8]
             inputs = _session_form_inputs(slide)
             _ipy_display(HTML(f"""
 <iframe name="xopat-frame-{uid}" id="xopat-frame-{uid}"
-        width="{_attr(width)}" height="{_attr(height)}"
-        style="border:1px solid #ccc;"></iframe>
+        style="{_iframe_style(width, height_value, cap_height)}"></iframe>
 <form id="xopat-form-{uid}" method="POST"
       action="{_attr(server.xopat_url.rstrip('/') + '/')}"
       target="xopat-frame-{uid}" style="display:none">

@@ -175,7 +175,7 @@ def _proxy_port_url():
         return ""
 
 
-def _render_recovery_toolbar(path):
+def _render_recovery_toolbar(path, height, cap_height):
     """Render a thin toolbar BELOW the just-mounted Colab kernel-port
     iframe. Carries two recovery affordances for the silent
     "iframe loads but input stops reaching it" freeze:
@@ -195,6 +195,11 @@ def _render_recovery_toolbar(path):
     base = _proxy_port_url()
     abs_url = (base + path) if base else ""
     uid = uuid.uuid4().hex[:8]
+    # When the caller didn't pick a height, clamp the Colab-created iframe
+    # to 70vh in JS — serve_kernel_port_as_iframe writes a fixed pixel
+    # height attribute that ignores window size. Explicit heights are
+    # honored: emit "" so the JS clamp step is a no-op.
+    clamp_css = f"min({int(height)}px, 70vh)" if cap_height else ""
     from IPython.display import HTML, display as _ipy_display
     _ipy_display(HTML(f"""
 <div id="xopat-bar-{uid}" style="display:flex;align-items:center;gap:8px;
@@ -212,6 +217,15 @@ def _render_recovery_toolbar(path):
     const script = document.currentScript;
     const status = document.getElementById('xopat-status-{uid}');
     const proxyHostSel = 'iframe[src*="googleusercontent.com"], iframe[src*="prod.colab.dev"]';
+    const heightClamp = "{clamp_css}";
+
+    function applyHeightClamp(el) {{
+        // Only when cap_height was True server-side (heightClamp non-empty).
+        // CSS handles window-resize reflow automatically; no resize listener.
+        if (!heightClamp || !el) return;
+        el.style.height = heightClamp;
+        el.style.maxHeight = '70vh';
+    }}
 
     function findOwnIframe() {{
         // Walk up from our script to find the nearest ancestor that
@@ -238,6 +252,7 @@ def _render_recovery_toolbar(path):
     }}
 
     const iframe = findOwnIframe();
+    applyHeightClamp(iframe);
     if (iframe) {{
         // iframes don't have a synchronous "loaded" flag (.complete is for
         // <img>); listen for load. If the iframe was already loaded before
@@ -272,6 +287,7 @@ def _render_recovery_toolbar(path):
         const fresh = document.createElement('iframe');
         for (const a of f.attributes) fresh.setAttribute(a.name, a.value);
         fresh.src = src;
+        applyHeightClamp(fresh);
         fresh.addEventListener('load', function() {{
             status.textContent = 'Reloaded.';
             updateAccumulationWarning();
@@ -283,7 +299,7 @@ def _render_recovery_toolbar(path):
 """))
 
 
-def _display_colab_with_recovery(path, width, height):
+def _display_colab_with_recovery(path, width, height, cap_height):
     """Shared body of display_colab / display_colab_post.
 
     Order matters:
@@ -293,7 +309,10 @@ def _display_colab_with_recovery(path, width, height):
       2. private-browsing warning — must come before the iframe so the
          user sees it even if the iframe then 404s.
       3. serve_kernel_port_as_iframe — Colab appends its iframe here.
-      4. recovery toolbar — appended after, sits below the iframe."""
+      4. recovery toolbar — appended after, sits below the iframe. The
+         toolbar's JS also applies the 70vh CSS clamp when `cap_height`
+         is True; serve_kernel_port_as_iframe only accepts a fixed pixel
+         height, so the clamp can't go through its API."""
     from IPython.display import clear_output
     from google.colab.output import serve_kernel_port_as_iframe
     clear_output(wait=True)
@@ -304,10 +323,10 @@ def _display_colab_with_recovery(path, width, height):
         width=str(width),
         height=str(height),
     )
-    _render_recovery_toolbar(path)
+    _render_recovery_toolbar(path, height, cap_height)
 
 
-def display_colab(slide_q, width, height):
+def display_colab(slide_q, width, height, cap_height):
     """Display a slide in Google Colab via serve_kernel_port_as_iframe.
 
     Uses the Colab-supplied helper so the iframe wrapper runs same-origin
@@ -328,10 +347,10 @@ def display_colab(slide_q, width, height):
     Colab to re-register its event routing) and an "Open in new tab"
     link (bypasses the bridge entirely). If neither works, closing and
     reopening the browser tab is the only known full recovery."""
-    _display_colab_with_recovery(f"/?slides={slide_q}", width, height)
+    _display_colab_with_recovery(f"/?slides={slide_q}", width, height, cap_height)
 
 
-def display_colab_post(session, width, height):
+def display_colab_post(session, width, height, cap_height):
     """Display a full session in Google Colab via URL-hash GET.
 
     Session is serialized to JSON and placed in the URL fragment, which
@@ -340,7 +359,7 @@ def display_colab_post(session, width, height):
     display_colab, and ships the same Reload/Open-in-new-tab recovery
     toolbar for the input-wedge case described there."""
     encoded = _urlquote(json.dumps(session), safe="")
-    _display_colab_with_recovery(f"/#{encoded}", width, height)
+    _display_colab_with_recovery(f"/#{encoded}", width, height, cap_height)
 
 
 def fix_colab_libs():

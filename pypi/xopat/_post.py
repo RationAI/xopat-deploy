@@ -27,3 +27,20 @@ def session_form_inputs(session):
 def attr(value):
     """HTML-escape a string for use inside a double-quoted attribute."""
     return html.escape(str(value), quote=True)
+
+
+def iframe_style(width, height, cap_height):
+    """CSS `style` string for embedded viewer iframes.
+
+    When `cap_height` is True (the caller used display()'s default height),
+    the height is `min({height}px, 70vh)` so the viewer never exceeds 70 %
+    of the browser viewport — important on laptops where 800 px crowds
+    out the rest of the notebook. When False, the caller's explicit
+    height is honored as-is, even on short windows (their override wins).
+
+    Width is passed through unchanged: it's already a CSS value
+    ("100%", "800px", …)."""
+    if cap_height:
+        return (f"width:{width};height:min({int(height)}px, 70vh);"
+                f"max-height:70vh;border:1px solid #ccc;")
+    return f"width:{width};height:{height}px;border:1px solid #ccc;"

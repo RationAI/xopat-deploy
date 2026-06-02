@@ -3,7 +3,11 @@
 import json
 import os
 
-from ._post import attr as _attr, session_form_inputs as _session_form_inputs
+from ._post import (
+    attr as _attr,
+    iframe_style as _iframe_style,
+    session_form_inputs as _session_form_inputs,
+)
 from .download import get_binaries_dir
 from .wsi import WSI_PORT
 from .xopat import XOPAT_PORT
@@ -96,20 +100,19 @@ def setup_jupyterhub(jupyterhub_host):
     print(f"Configured for JupyterHub: {host}{xopat_path}")
 
 
-def display_jupyterhub(url, slide, width, height):
+def display_jupyterhub(url, slide, width, height, cap_height):
     """Display a slide on JupyterHub with reload fallback."""
     import uuid
     from IPython.display import HTML, display as _ipy_display
 
     uid = uuid.uuid4().hex[:8]
+    style = _iframe_style(width, height, cap_height) + "visibility:hidden;"
     _ipy_display(HTML(f"""
 <div id="status-{uid}">Loading...</div>
 <iframe
     id="frame-{uid}"
     src="{url}"
-    width="{width}"
-    height="{height}"
-    style="border:1px solid #ccc; visibility: hidden;">
+    style="{style}">
 </iframe>
 <script>
 (function() {{
@@ -150,7 +153,7 @@ def display_jupyterhub(url, slide, width, height):
 """))
 
 
-def display_jupyterhub_post(xopat_url, session, width, height):
+def display_jupyterhub_post(xopat_url, session, width, height, cap_height):
     """Display a full session on JupyterHub via POST-into-iframe.
 
     The proxied xopat URL is same-origin with the notebook, so a
@@ -162,10 +165,10 @@ def display_jupyterhub_post(xopat_url, session, width, height):
     uid = uuid.uuid4().hex[:8]
     action = xopat_url.rstrip("/") + "/"
     inputs = _session_form_inputs(session)
+    style = _iframe_style(width, height, cap_height)
     _ipy_display(HTML(f"""
 <iframe name="xopat-frame-{uid}" id="xopat-frame-{uid}"
-        width="{_attr(width)}" height="{_attr(height)}"
-        style="border:1px solid #ccc;"></iframe>
+        style="{style}"></iframe>
 <form id="xopat-form-{uid}" method="POST"
       action="{_attr(action)}"
       target="xopat-frame-{uid}" style="display:none">
