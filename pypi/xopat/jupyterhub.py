@@ -71,6 +71,7 @@ def setup_jupyterhub(jupyterhub_host):
                 "disablePluginsUi": True,
                 "scrollRequiresCtrl": True,
                 "bypassCloseConfirmation": True,
+                "notificationsPosition": "top",
                 "ui": {
                     "scaleBar": True,
                     "toolBar": False,

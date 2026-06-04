@@ -25,6 +25,7 @@ __all__ = [
     "setup_colab",
     "run_server",
     "display",
+    "display_link",
     "Server",
     "clear_binary_cache",
 ]
@@ -170,3 +171,45 @@ def display(server, slide, width="100%", height=None):
     raise TypeError(
         "display(): second argument must be a slide id (str) or a session config (dict)"
     )
+
+
+def display_link(server, path, label=None):
+    """Render a clickable button that opens the xopat viewer at `path`
+    in a new browser tab.
+
+    Args:
+        server: Server instance returned by run_server().
+        path:   URL path under the xopat root (leading slash optional).
+                Example: "dev_setup".
+        label:  Button text. Defaults to `path` with underscores/dashes
+                turned into spaces and Title-Cased ("dev_setup" → "Dev Setup").
+
+    The new tab is the user's best escape hatch in Colab when the
+    in-notebook iframe wedges, and is the only viable surface for pages
+    like dev_setup that aren't meant to be embedded next to a slide.
+    """
+    p = "/" + path.lstrip("/")
+
+    if is_colab():
+        # Colab: server.xopat_url is http://127.0.0.1:9001, unreachable
+        # from the browser. The user-clickable URL lives behind Colab's
+        # kernel-port proxy; same lookup the recovery toolbar uses.
+        from .colab import _proxy_port_url
+        base = _proxy_port_url()
+        url = (base + p) if base else ""
+    else:
+        # JupyterHub: relative `/proxy/<port>` prefix — resolves against
+        # the notebook origin. Local Jupyter: absolute 127.0.0.1 URL.
+        # Both are directly usable as anchor hrefs.
+        url = server.xopat_url.rstrip("/") + p
+
+    if label is None:
+        label = path.strip("/").replace("_", " ").replace("-", " ").title() or "Open"
+
+    _ipy_display(HTML(
+        f'<a href="{_attr(url)}" target="_blank" rel="noopener" '
+        f'style="display:inline-block;padding:4px 10px;margin:4px 4px 4px 0;'
+        f'border:1px solid #d1d5db;background:#f9fafb;border-radius:4px;'
+        f'color:#374151;text-decoration:none;font-family:sans-serif;'
+        f'font-size:13px;">{_attr(label)}</a>'
+    ))

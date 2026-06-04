@@ -82,6 +82,7 @@ def setup_colab():
                 "disablePluginsUi": True,
                 "scrollRequiresCtrl": True,
                 "bypassCloseConfirmation": True,
+                "notificationsPosition": "top",
                 "ui": {
                     "scaleBar": True,
                     "toolBar": False,
@@ -107,10 +108,10 @@ def setup_colab():
         },
         "plugins": {
             "slide-info": {"permaLoad": True},
+            "extra-tutorials": {"enabled": True},
         },
         "modules": {
             "rationai-wsi-tile-source": {"permaLoad": True},
-            "mlflow": {"enabled": False},
         },
     }
 
