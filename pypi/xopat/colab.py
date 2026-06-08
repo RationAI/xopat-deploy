@@ -73,7 +73,8 @@ def setup_colab():
                     "js_cookie_same_site": "",
                     "js_cookie_secure": "",
                     "secureMode": False,
-                    "pluginSelectionMode": False
+                    "pluginSelectionMode": False,
+                    "notificationsPosition": "top"
                 }
             },
             "setup": {

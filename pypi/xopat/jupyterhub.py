@@ -62,7 +62,8 @@ def setup_jupyterhub(jupyterhub_host):
                     "js_cookie_same_site": "",
                     "js_cookie_secure": "",
                     "secureMode": False,
-                    "pluginSelectionMode": False
+                    "pluginSelectionMode": False,
+                    "notificationsPosition": "top"
                 }
             },
             "setup": {
