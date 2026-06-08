@@ -112,6 +112,7 @@ def setup_colab():
         },
         "modules": {
             "rationai-wsi-tile-source": {"permaLoad": True},
+            "geotiff": {"permaLoad": True},
         },
     }
 

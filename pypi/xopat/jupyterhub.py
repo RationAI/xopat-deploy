@@ -89,6 +89,7 @@ def setup_jupyterhub(jupyterhub_host):
         },
         "modules": {
             "rationai-wsi-tile-source": {"permaLoad": True},
+            "geotiff": {"permaLoad": True},
         },
     }
 
