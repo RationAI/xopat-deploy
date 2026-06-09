@@ -2,8 +2,10 @@ import subprocess
 import signal
 import os
 import socket
+import threading
 import time
 import urllib.request
+from collections import deque
 from .download import is_windows
 
 
@@ -73,13 +75,33 @@ def free_port(port, name):
     if _port_in_use(port):
         raise RuntimeError(
             f"Port {port} still in use after cleanup attempt; cannot start {name}. "
-            f"Restart the Colab runtime (Runtime → Disconnect and delete runtime)."
+            f"Restart the notebook runtime (Runtime → Disconnect and delete runtime)."
         )
+
+
+_READY_TIMEOUT_SECONDS = 30
+_OUTPUT_TAIL_LINES = 200
 
 
 def start_process(binary, ready_url, name, env=None, cwd=None):
     """
     Start a subprocess and wait until it responds on ready_url.
+
+    On Linux, `LD_LIBRARY_PATH` is reset to `<binary>/_internal` and any
+    `LD_PRELOAD` is dropped from the spawn env. The PyInstaller bundle
+    is self-contained, and hosts that pollute these vars with
+    ABI-incompatible libs (Linuxbrew, leaked conda envs) otherwise win
+    the dynamic-loader race against the bundled libs and abort the
+    binary on import. Real case: brew's libtiff.so.6 was linked against
+    a libjpeg with renamed symbols, so openslide died with
+    `undefined symbol: jpeg12_write_raw_data` before port 8050 was ever
+    bound, leaving the user with a "did not start" with no log.
+
+    stdout and stderr are captured into a bounded ring buffer (last
+    ~200 lines) so that when the binary does fail, the actual error is
+    surfaced in the raised `RuntimeError` instead of being silently
+    discarded. The drain runs in a daemon thread to prevent the child
+    from blocking on a full pipe.
 
     Args:
         binary:    Path to the executable.
@@ -92,30 +114,56 @@ def start_process(binary, ready_url, name, env=None, cwd=None):
         subprocess.Popen instance.
 
     Raises:
-        RuntimeError: If the process does not respond within timeout.
+        RuntimeError: If the process does not respond within the
+                      readiness window, or exits before becoming ready.
+                      The message includes the binary's last captured
+                      output and exit code (or "still running, terminated").
     """
     cwd = cwd or str(binary.parent)
 
     print(f"Starting {name}...")
+    popen_kwargs = dict(
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
     if is_windows():
         proc = subprocess.Popen(
             [str(binary)],
-            cwd=cwd,
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            **popen_kwargs,
         )
     else:
+        spawn_env = dict(env) if env is not None else os.environ.copy()
+        spawn_env["LD_LIBRARY_PATH"] = str(binary.parent / "_internal")
+        spawn_env.pop("LD_PRELOAD", None)
         proc = subprocess.Popen(
             [str(binary)],
-            cwd=cwd,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            env=spawn_env,
             preexec_fn=_linux_die_with_parent,
+            **popen_kwargs,
         )
 
-    for _ in range(50):
+    captured = deque(maxlen=_OUTPUT_TAIL_LINES)
+
+    def _drain():
+        try:
+            for line in proc.stdout:
+                captured.append(line)
+        except Exception:
+            pass
+
+    threading.Thread(target=_drain, daemon=True).start()
+
+    deadline = time.monotonic() + _READY_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        # Bail out immediately if the binary already died — typical for
+        # missing-lib failures, which abort in <1 s. Without this we'd
+        # wait the full window before raising.
+        if proc.poll() is not None:
+            break
         try:
             urllib.request.urlopen(ready_url, timeout=0.5)
             print(f"{name} is running.")
@@ -123,8 +171,20 @@ def start_process(binary, ready_url, name, env=None, cwd=None):
         except Exception:
             time.sleep(0.2)
 
-    proc.terminate()
-    raise RuntimeError(f"{name} did not start on {ready_url}")
+    if proc.poll() is None:
+        proc.terminate()
+        exit_status = "still running, terminated"
+    else:
+        exit_status = str(proc.returncode)
+    # Give the drain thread a moment to flush remaining lines after the
+    # binary's stdout closes on terminate / natural exit.
+    time.sleep(0.2)
+    tail = "".join(list(captured))
+    raise RuntimeError(
+        f"{name} did not start on {ready_url}\n"
+        f"Exit code: {exit_status}\n"
+        f"Last output from the binary:\n{tail}"
+    )
 
 
 def stop_process(proc, name):
