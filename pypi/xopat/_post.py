@@ -6,6 +6,51 @@ under a single top-level `visualization` key. We therefore emit a
 single form field named `visualization` whose value is the
 JSON-stringified session, URL-encoded once (the browser adds the
 second encoding layer on submit, matching the server's decode).
+
+TODO(jupyterhub): the 2-encode / 2-decode chain is brittle.
+xopat's Node entrypoint (external/xopat/server/node/index.js around
+the `application/x-www-form-urlencoded` case) does
+`decodeURIComponent(rawBody)` AND `querystring.parse(...)` — two decode
+layers, so it requires the wire body to be 2x percent-encoded. That
+holds for direct loopback (local Jupyter) and Colab's
+`serve_kernel_port_as_iframe` (no intermediate decoder), but on
+JupyterHub deployments with an extra hop in front of the single-user
+server (CHP, or more commonly an nginx/traefik ingress) the body
+arrives at Node 1x-decoded already. Node's two decodes then over-
+strip, the value reaches `JSON.parse` still 1x-encoded, and the
+client surfaces:
+
+    "JSON Error: SyntaxError: Unexpected token '%', "%7B%22para"...
+     is not valid JSON"
+
+(`%7B%22` = `{"`.) jupyter-server-proxy itself is NOT the culprit —
+its handler forwards `self.request.body` as raw bytes — so the fix
+can't live there. Options when this becomes worth fixing:
+
+  1. (preferred) Stop using a form POST for the JupyterHub path.
+     Emit a small `<script>` that `fetch()`-POSTs the session as
+     `application/json` to the proxied xopat URL, then load the
+     HTML response into the iframe via `srcdoc` with an injected
+     `<base href="…">` so relative asset URLs still resolve through
+     the proxy. That hits Node's `application/json` branch
+     (plain `JSON.parse(rawBody)`), which is invariant under
+     however many decode layers sit between browser and Node.
+     Only `display_jupyterhub_post` needs to change; the local
+     and Colab paths are fine as-is.
+  2. Patch xopat's Node entrypoint to drop the upfront
+     `decodeURIComponent(rawBody)` and rely on `querystring.parse`
+     alone (single decode). Requires re-shipping the xopat binary
+     and breaks any current consumer that relies on the 2-decode
+     contract — riskier than option 1.
+  3. Base64-encode the JSON into a `visualization_b64` field.
+     URL-safe base64 is invariant under any number of percent-
+     encode/decode passes. Needs a tiny server-side decode hook in
+     xopat to map `visualization_b64` → `visualization`.
+
+Until then: the workaround is to deploy JupyterHub without an
+ingress that decodes request bodies, or to use the GET-by-slide-id
+path (`display(server, "slide.tiff")`) which doesn't go through this
+POST chain at all.
 """
 
 import html

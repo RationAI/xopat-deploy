@@ -163,7 +163,16 @@ def display_jupyterhub_post(xopat_url, session, width, height, cap_height):
 
     The proxied xopat URL is same-origin with the notebook, so a
     standard form-target POST loads the response into the iframe with
-    xopat's URL as the document base."""
+    xopat's URL as the document base.
+
+    TODO(jupyterhub): this path is fragile on hubs that sit behind an
+    ingress which URL-decodes request bodies (nginx/traefik) — the
+    session arrives at the client still 1x percent-encoded and xopat
+    surfaces a `JSON Error: Unexpected token '%', "%7B%22para"...`
+    failure. See `_post.py`'s module docstring for the full chain
+    analysis and proposed fixes (the preferred one is to switch this
+    function to a `fetch`-based `application/json` POST with the HTML
+    response injected via iframe `srcdoc` + `<base href>`)."""
     import uuid
     from IPython.display import HTML, display as _ipy_display
 
