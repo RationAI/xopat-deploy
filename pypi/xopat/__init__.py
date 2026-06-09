@@ -6,6 +6,7 @@ from IPython.display import HTML, display as _ipy_display
 from ._post import (
     attr as _attr,
     iframe_style as _iframe_style,
+    reload_toolbar as _reload_toolbar,
     session_form_inputs as _session_form_inputs,
 )
 from .download import clear_binary_cache, get_wsi_binary, get_xopat_binary
@@ -143,6 +144,7 @@ def display(server, slide, width="100%", height=None):
             _ipy_display(HTML(
                 f'<iframe id="xopat-frame-{uid}" src="{_attr(url)}" '
                 f'style="{_iframe_style(width, height_value, cap_height)}"></iframe>'
+                + _reload_toolbar(uid, url, reload_mode="src")
             ))
         return
 
@@ -165,7 +167,7 @@ def display(server, slide, width="100%", height=None):
 {inputs}
 </form>
 <script>document.getElementById("xopat-form-{uid}").submit();</script>
-"""))
+""" + _reload_toolbar(uid, open_url=None, reload_mode="form")))
         return
 
     raise TypeError(

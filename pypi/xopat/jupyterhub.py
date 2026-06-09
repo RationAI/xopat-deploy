@@ -6,6 +6,7 @@ import os
 from ._post import (
     attr as _attr,
     iframe_style as _iframe_style,
+    reload_toolbar as _reload_toolbar,
     session_form_inputs as _session_form_inputs,
 )
 from .download import get_binaries_dir
@@ -104,23 +105,24 @@ def setup_jupyterhub(jupyterhub_host):
 
 
 def display_jupyterhub(url, slide, width, height, cap_height):
-    """Display a slide on JupyterHub with reload fallback."""
+    """Display a slide on JupyterHub with retry-on-500 and recovery toolbar."""
     import uuid
     from IPython.display import HTML, display as _ipy_display
 
     uid = uuid.uuid4().hex[:8]
     style = _iframe_style(width, height, cap_height) + "visibility:hidden;"
     _ipy_display(HTML(f"""
-<div id="status-{uid}">Loading...</div>
+<div id="loading-{uid}" style="font-family:sans-serif;font-size:13px;
+     color:#6b7280;margin:4px 0;">Loading...</div>
 <iframe
-    id="frame-{uid}"
+    id="xopat-frame-{uid}"
     src="{url}"
     style="{style}">
 </iframe>
 <script>
 (function() {{
-    const iframe = document.getElementById('frame-{uid}');
-    const status = document.getElementById('status-{uid}');
+    const iframe = document.getElementById('xopat-frame-{uid}');
+    const status = document.getElementById('loading-{uid}');
     const maxRetries = 15;
     let attempt = 0;
     function isErrorPage() {{
@@ -153,7 +155,7 @@ def display_jupyterhub(url, slide, width, height, cap_height):
     }};
 }})();
 </script>
-"""))
+""" + _reload_toolbar(uid, open_url=url, reload_mode="src")))
 
 
 def display_jupyterhub_post(xopat_url, session, width, height, cap_height):
@@ -178,5 +180,5 @@ def display_jupyterhub_post(xopat_url, session, width, height, cap_height):
 {inputs}
 </form>
 <script>document.getElementById("xopat-form-{uid}").submit();</script>
-"""))
+""" + _reload_toolbar(uid, open_url=None, reload_mode="form")))
 

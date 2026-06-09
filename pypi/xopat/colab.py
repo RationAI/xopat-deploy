@@ -10,7 +10,7 @@ import subprocess
 import uuid
 from urllib.parse import quote as _urlquote
 
-from ._post import attr as _attr
+from ._post import attr as _attr, STALL_HINT_HTML as _STALL_HINT_HTML
 from .download import get_binaries_dir, get_wsi_binary
 from .wsi import WSI_PORT
 from .xopat import XOPAT_PORT
@@ -218,6 +218,7 @@ def _render_recovery_toolbar(path):
             border-radius:4px;color:#374151;text-decoration:none;">Open in new tab</a>
   <span id="xopat-status-{uid}" style="margin-left:6px;color:#6b7280;">Loading…</span>
 </div>
+{_STALL_HINT_HTML}
 <script>
 (function() {{
     const script = document.currentScript;
