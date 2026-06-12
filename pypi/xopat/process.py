@@ -12,14 +12,41 @@ from .download import is_windows
 _PR_SET_PDEATHSIG = 1
 
 
+def _raise_nofile_limit():
+    """Raise this process's open-file soft limit to the hard limit.
+
+    The xopat node server serves the viewer by reading the core, every
+    plugin/module, locales and the index template per request, plus
+    hundreds of static assets — all as concurrent file opens. With 4+
+    viewers loading at once the default soft limit (often 1024) is
+    exhausted; the node server then throws EMFILE out of readFileSync,
+    its catch-all turns that into a blank-page HTTP 500, and only
+    restarting run_server() clears it. Lifting the soft limit to the
+    hard limit removes that ceiling. Best-effort: any failure is ignored
+    so a restrictive host can't block startup."""
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if hard != resource.RLIM_INFINITY and soft >= hard:
+            return
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+    except Exception:
+        pass
+
+
 def _linux_die_with_parent():
     """preexec_fn for Linux: ask the kernel to SIGTERM this child when the
-    parent process exits. Prevents wsi/xopat binaries from being orphaned
+    parent process exits, and raise the child's open-file limit.
+
+    The death-signal prevents wsi/xopat binaries from being orphaned
     onto PID 1 and continuing to hold their ports after a Colab "Restart
-    session" — which then breaks the next run_server() invocation."""
+    session" — which then breaks the next run_server() invocation. The
+    NOFILE bump (see _raise_nofile_limit) keeps the node server from
+    hitting EMFILE under a burst of concurrent viewer loads."""
     import ctypes
     libc = ctypes.CDLL("libc.so.6", use_errno=True)
     libc.prctl(_PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0)
+    _raise_nofile_limit()
 
 
 def _port_in_use(port):
@@ -147,6 +174,11 @@ def start_process(binary, ready_url, name, env=None, cwd=None):
         )
 
     captured = deque(maxlen=_OUTPUT_TAIL_LINES)
+    # Expose the ring buffer on the process so runtime output (e.g. the
+    # node server's exact error behind a blank-page HTTP 500) stays
+    # retrievable after startup via Server.logs(); the drain thread keeps
+    # appending to it for the life of the process.
+    proc._captured = captured
 
     def _drain():
         try:

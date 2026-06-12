@@ -1,5 +1,7 @@
 import os
 import uuid
+import urllib.request
+import urllib.error
 
 from IPython.display import HTML, display as _ipy_display
 
@@ -32,6 +34,24 @@ __all__ = [
 ]
 
 
+def _probe(url, timeout=5):
+    """GET `url`, returning (status, body) and capturing the body even on
+    an HTTP error response. The xopat node server writes its exception text
+    into the 500 body, so we must read error bodies rather than let
+    urllib raise them away. Returns (None, "<reason>") if unreachable."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except Exception:
+            body = ""
+        return e.code, body
+    except Exception as e:
+        return None, f"unreachable: {e!r}"
+
+
 class Server:
     """Running xOpat + WSI-Service instance returned by run_server()."""
 
@@ -51,6 +71,68 @@ class Server:
             self._wsi.stop()
         if Server.running is self:
             Server.running = None
+
+    def logs(self, name=None, n=50):
+        """Print the last `n` lines of captured output from the running
+        processes and return them as a dict.
+
+        When a viewer renders a blank page / "failed to connect to iframe",
+        the underlying error (e.g. the node server's EMFILE/ENOMEM behind an
+        HTTP 500) is written to the process's stdout/stderr but is otherwise
+        only surfaced on a startup failure. This dumps the live ring buffer
+        captured by start_process so the real error is visible.
+
+        Args:
+            name: "xopat" or "wsi" to limit output; None prints both.
+            n:    Number of trailing lines to show per process.
+        """
+        targets = {"xopat": self._xopat.proc, "wsi": self._wsi.proc}
+        if name is not None:
+            key = name.lower()
+            if key not in targets:
+                raise ValueError("name must be 'xopat', 'wsi', or None")
+            targets = {key: targets[key]}
+
+        out = {}
+        for key, proc in targets.items():
+            captured = getattr(proc, "_captured", None)
+            lines = list(captured)[-n:] if captured else []
+            out[key] = "".join(lines)
+            print(f"===== {key} (last {len(lines)} lines) =====")
+            print(out[key] or "(no output captured)")
+        return out
+
+    def diagnose(self, slide=None):
+        """Probe both backends and print each status code + response body.
+
+        Reproduces what the iframe does from the Python side so a 500 that
+        shows up as a blank page becomes readable: the xopat node server
+        writes the exact exception string into the 500 body, so this reveals
+        whether the index hit is failing with EMFILE, ENOMEM, or something
+        else. Also checks WSI-Service liveness.
+
+        Args:
+            slide: optional slide id; if given, also probes the viewer at
+                   `/?slides=<id>` in addition to the bare index.
+        """
+        probes = [("xopat index", f"http://127.0.0.1:{XOPAT_PORT}/")]
+        if slide is not None:
+            slide_q = str(slide).replace(">", "%3E")
+            probes.append(
+                ("xopat slide", f"http://127.0.0.1:{XOPAT_PORT}/?slides={slide_q}")
+            )
+        # /alive is the WSI-Service liveness route; fall back to /docs.
+        probes.append(("wsi alive", f"http://127.0.0.1:{WSI_PORT}/alive"))
+
+        results = {}
+        for label, url in probes:
+            status, body = _probe(url)
+            results[label] = (status, body)
+            print(f"===== {label}: {url} =====")
+            print(f"status: {status}")
+            snippet = body if len(body) <= 2000 else body[:2000] + "… [truncated]"
+            print(snippet or "(empty body)")
+        return results
 
 
 def run_server(data_dir=None):
