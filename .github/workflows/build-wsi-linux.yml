@@ -55,11 +55,19 @@ jobs:
           cd dist/wsi_service_binary
           zip -r "../../wsi_service_binary_linux_${{ steps.tag.outputs.value }}.zip" .
 
+      - name: Generate SHA-256 checksum
+        run: |
+          sha256sum "wsi_service_binary_linux_${{ steps.tag.outputs.value }}.zip" \
+            > "wsi_service_binary_linux_${{ steps.tag.outputs.value }}.zip.sha256"
+          cat "wsi_service_binary_linux_${{ steps.tag.outputs.value }}.zip.sha256"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.value }}
           name: ${{ steps.tag.outputs.value }}
-          files: wsi_service_binary_linux_*.zip
+          files: |
+            wsi_service_binary_linux_*.zip
+            wsi_service_binary_linux_*.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

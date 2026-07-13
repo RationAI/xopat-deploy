@@ -69,11 +69,19 @@ jobs:
           cd dist/xopat
           zip -r "../../xopat_linux_${{ steps.tag.outputs.value }}.zip" .
 
+      - name: Generate SHA-256 checksum
+        run: |
+          sha256sum "xopat_linux_${{ steps.tag.outputs.value }}.zip" \
+            > "xopat_linux_${{ steps.tag.outputs.value }}.zip.sha256"
+          cat "xopat_linux_${{ steps.tag.outputs.value }}.zip.sha256"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.value }}
           name: ${{ steps.tag.outputs.value }}
-          files: xopat_linux_*.zip
+          files: |
+            xopat_linux_*.zip
+            xopat_linux_*.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

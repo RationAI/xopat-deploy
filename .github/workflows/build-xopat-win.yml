@@ -71,11 +71,22 @@ jobs:
           Compress-Archive -Path dist\xopat\* `
             -DestinationPath "xopat_windows_${{ steps.tag.outputs.value }}.zip"
 
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $zip = "xopat_windows_${{ steps.tag.outputs.value }}.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          # sha256sum-compatible: "<hex>  <filename>"
+          "$hash  $zip" | Out-File -Encoding ascii "$zip.sha256"
+          Get-Content "$zip.sha256"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.value }}
           name: ${{ steps.tag.outputs.value }}
-          files: xopat_windows_*.zip
+          files: |
+            xopat_windows_*.zip
+            xopat_windows_*.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
