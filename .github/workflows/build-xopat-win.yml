@@ -1,4 +1,5 @@
 name: Build xOpat Windows
+run-name: "xOpat Windows ${{ inputs.tag || github.ref_name }} (ref=${{ inputs.ref || github.ref_name }})"
 
 on:
   push:
@@ -11,10 +12,14 @@ on:
         required: true
         type: string
       ref:
-        description: 'Branch to build from (e.g. develop)'
+        description: 'Branch to build from. Leave empty to use the branch selected above.'
         required: false
-        default: 'develop'
         type: string
+      xopat_ref:
+        description: 'xOpat submodule ref (branch, tag, or SHA). Default: release/v3.'
+        required: false
+        type: string
+        default: 'release/v3'
 
 jobs:
   build-windows:
@@ -28,8 +33,15 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
           submodules: false
 
-      - name: Checkout xOpat submodule (release/v3)
-        run: git submodule update --init external/xopat
+      - name: Checkout xOpat submodule at requested ref
+        shell: bash
+        run: |
+          XOPAT_REF="${{ inputs.xopat_ref || 'release/v3' }}"
+          git submodule update --init external/xopat
+          cd external/xopat
+          git fetch origin "$XOPAT_REF"
+          git checkout FETCH_HEAD
+          echo "xOpat submodule now at $(git rev-parse HEAD) (ref: $XOPAT_REF)"
 
       - name: Set up Node.js 18
         uses: actions/setup-node@v4
@@ -59,11 +71,22 @@ jobs:
           Compress-Archive -Path dist\xopat\* `
             -DestinationPath "xopat_windows_${{ steps.tag.outputs.value }}.zip"
 
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $zip = "xopat_windows_${{ steps.tag.outputs.value }}.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          # sha256sum-compatible: "<hex>  <filename>"
+          "$hash  $zip" | Out-File -Encoding ascii "$zip.sha256"
+          Get-Content "$zip.sha256"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.value }}
           name: ${{ steps.tag.outputs.value }}
-          files: xopat_windows_*.zip
+          files: |
+            xopat_windows_*.zip
+            xopat_windows_*.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
