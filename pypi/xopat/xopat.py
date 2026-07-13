@@ -20,9 +20,17 @@ class XOpat:
 def start_xopat(binary):
     binary = Path(binary)
     env = os.environ.copy()
+
+    # Runtime configuration
     env["XOPAT_CACHE_DIR"] = str(binary.parent / "cache")
     env["XOPAT_NODE_PORT"] = str(XOPAT_PORT)
     env["WSI_PORT"] = str(WSI_PORT)
+
+    # Params / UI config
+    env["XOPAT_PLUGIN_SELECTION_MODE"] = "whitelist"
+    env["XOPAT_DISABLE_PLUGINS_UI"] = "true"
+    env["XOPAT_SCROLL_REQUIRES_CTRL"] = "true"
+    env["XOPAT_BYPASS_CLOSE_CONFIRMATION"] = "true"
 
     proc = start_process(binary, XOPAT_READY_URL, "xOpat", env=env)
 

@@ -1,16 +1,56 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "xopat"
-version = "0.1.14"
-description = "Launch WSI-Service backend and xOpat"
+version = "0.1.32"
+description = "Launch the xOpat whole-slide image viewer and WSI-Service backend from a Jupyter, Colab, or JupyterHub notebook"
+readme = "README.md"
 requires-python = ">=3.9"
-dependencies = [
-    "ipython",
-    "jupyter-server-proxy"
+license = "MIT"
+authors = [{ name = "RationAI Research Group" }]
+keywords = [
+    "xopat",
+    "whole-slide-imaging",
+    "wsi",
+    "digital-pathology",
+    "openseadragon",
+    "jupyter",
+    "colab",
+    "viewer",
 ]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Healthcare Industry",
+    "Framework :: Jupyter",
+    "Framework :: IPython",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+# No pip-installable dependencies. We use IPython.display which already
+# ships with every Jupyter-like host (Colab, Jupyter, JupyterHub). Listing
+# `ipython` here caused `pip install --upgrade --force-reinstall` to swap
+# Colab's pinned ipython==7.34.0 for the latest, crashing the runtime.
+# `jupyter-server-proxy` was also listed but not imported anywhere — on
+# JupyterHub it is configured server-side, not via this package.
+dependencies = []
+
+[project.urls]
+Homepage = "https://xopat.org"
+Documentation = "https://xopat.org"
+Repository = "https://github.com/RationAI/xopat-deploy"
+"xOpat viewer" = "https://github.com/RationAI/xopat"
+"WSI-Service backend" = "https://github.com/RationAI/WSI-Service"
+Issues = "https://github.com/RationAI/xopat-deploy/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

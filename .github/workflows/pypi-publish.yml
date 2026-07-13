@@ -1,5 +1,5 @@
 name: Publish to PyPI
-run-name: "Publish to ${{ inputs.target || 'pypi' }} v${{ inputs.package_version || github.ref_name }}"
+run-name: "Publish to ${{ inputs.target || 'pypi' }} v${{ inputs.package_version || github.ref_name }} (xopat=${{ inputs.xopat_tag || 'latest' }}, wsi=${{ inputs.wsi_tag || 'latest' }}, ref=${{ inputs.branch || github.ref_name }})"
 
 on:
   # Trigger on tag push: pypi-v0.2.0, pypi-v1.0.0, etc.
@@ -23,10 +23,9 @@ on:
         required: false
         type: string
       branch:
-        description: "Branch to build from (e.g. develop)"
+        description: "Branch to build from. Leave empty to use the branch selected above."
         required: false
         type: string
-        default: develop
       target:
         description: "Publish target"
         required: true

@@ -1,5 +1,6 @@
 import os
 import platform
+import shutil
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -8,7 +9,7 @@ GITHUB_REPO = "RationAI/xopat-deploy"
 # Default binary versions. Overridden during PyPI build
 # (see .github/workflows/pypi-publish.yml).
 WSI_VERSION = "wsi-v1.0.2"
-XOPAT_VERSION = "xopat-v1.0.6"
+XOPAT_VERSION = "xopat-v1.0.7"
 
 
 def get_platform():
@@ -68,6 +69,8 @@ def get_wsi_binary():
         filename = f"wsi_service_binary_{plat}_{WSI_VERSION}.zip"
         url = download_url(filename, WSI_VERSION)
         download_and_extract(url, dest)
+    else:
+        print(f"WSI-Service: using cached binary {binary} ({WSI_VERSION})")
 
     if not binary.exists():
         raise FileNotFoundError(f"WSI-Service binary not found after download: {binary}")
@@ -88,6 +91,8 @@ def get_xopat_binary():
         filename = f"xopat_{plat}_{XOPAT_VERSION}.zip"
         url = download_url(filename, XOPAT_VERSION)
         download_and_extract(url, dest)
+    else:
+        print(f"xOpat: using cached binary {binary} ({XOPAT_VERSION})")
 
     if not binary.exists():
         raise FileNotFoundError(f"xOpat binary not found after download: {binary}")
@@ -96,3 +101,28 @@ def get_xopat_binary():
         binary.chmod(0o755)
 
     return binary
+
+
+def clear_binary_cache():
+    """Remove cached WSI-Service and xOpat binaries.
+
+    Useful when a release was re-uploaded under the same tag and the
+    cache still holds the old build, or when debugging a binary
+    version mismatch. Next run_server() call will re-download from
+    GitHub Releases.
+
+    Only clears the binary subdirectories (`wsi/`, `xopat/`); leaves
+    sibling files like `xopat_env.json` alone — those are
+    configuration, not cache, and destroying them between
+    setup_jupyterhub/setup_colab and run_server breaks the viewer
+    boot."""
+    root = get_binaries_dir()
+    cleared = False
+    for sub in ("wsi", "xopat"):
+        p = root / sub
+        if p.exists():
+            print(f"Clearing {p}")
+            shutil.rmtree(p, ignore_errors=True)
+            cleared = True
+    if not cleared:
+        print(f"No binary cache to clear under {root}")

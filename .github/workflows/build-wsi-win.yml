@@ -1,4 +1,5 @@
 name: Build WSI-Service Windows
+run-name: "WSI-Service Windows ${{ inputs.tag || github.ref_name }} (ref=${{ inputs.ref || github.ref_name }})"
 
 on:
   push:
@@ -11,9 +12,8 @@ on:
         required: true
         type: string
       ref:
-        description: 'Branch to build from (e.g. develop)'
+        description: 'Branch to build from. Leave empty to use the branch selected above.'
         required: false
-        default: 'develop'
         type: string
 
 jobs:
@@ -60,11 +60,21 @@ jobs:
           Compress-Archive -Path dist\wsi_service_binary\* `
             -DestinationPath "wsi_service_binary_windows_${{ steps.tag.outputs.value }}.zip"
 
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $zip = "wsi_service_binary_windows_${{ steps.tag.outputs.value }}.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          "$hash  $zip" | Out-File -Encoding ascii "$zip.sha256"
+          Get-Content "$zip.sha256"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.value }}
           name: ${{ steps.tag.outputs.value }}
-          files: wsi_service_binary_windows_*.zip
+          files: |
+            wsi_service_binary_windows_*.zip
+            wsi_service_binary_windows_*.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
