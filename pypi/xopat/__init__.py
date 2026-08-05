@@ -1,7 +1,9 @@
 import os
+import time
 import uuid
 import urllib.request
 import urllib.error
+from urllib.parse import quote as _urlquote
 
 from IPython.display import HTML, display as _ipy_display
 
@@ -52,6 +54,46 @@ def _probe(url, timeout=5):
         return None, f"unreachable: {e!r}"
 
 
+def _proc_health(proc):
+    """Return a snapshot of a subprocess: pid, liveness, resident memory,
+    open file descriptors, and the NOFILE limit. Memory/fd/limit are read
+    from /proc (Linux/Colab); they come back None elsewhere. open_fds
+    climbing toward nofile_soft points at EMFILE; rss_mb climbing toward the
+    VM ceiling points at ENOMEM."""
+    pid = proc.pid
+    info = {
+        "pid": pid,
+        "running": proc.poll() is None,
+        "returncode": proc.returncode,
+        "rss_mb": None,
+        "open_fds": None,
+        "nofile_soft": None,
+        "nofile_hard": None,
+    }
+    try:
+        with open(f"/proc/{pid}/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    info["rss_mb"] = round(int(line.split()[1]) / 1024, 1)
+                    break
+    except Exception:
+        pass
+    try:
+        info["open_fds"] = len(os.listdir(f"/proc/{pid}/fd"))
+    except Exception:
+        pass
+    try:
+        with open(f"/proc/{pid}/limits") as f:
+            for line in f:
+                if line.startswith("Max open files"):
+                    parts = line.split()
+                    info["nofile_soft"], info["nofile_hard"] = parts[3], parts[4]
+                    break
+    except Exception:
+        pass
+    return info
+
+
 class Server:
     """Running xOpat + WSI-Service instance returned by run_server()."""
 
@@ -72,19 +114,20 @@ class Server:
         if Server.running is self:
             Server.running = None
 
-    def logs(self, name=None, n=50):
-        """Print the last `n` lines of captured output from the running
-        processes and return them as a dict.
+    def logs(self, name=None, n=50, full=False):
+        """Print captured output from the running processes and return it
+        as a dict.
 
-        When a viewer renders a blank page / "failed to connect to iframe",
-        the underlying error (e.g. the node server's EMFILE/ENOMEM behind an
-        HTTP 500) is written to the process's stdout/stderr but is otherwise
-        only surfaced on a startup failure. This dumps the live ring buffer
-        captured by start_process so the real error is visible.
+        Prefers the persistent per-process log file (the complete history of
+        this run) over the in-memory ring buffer, because under load the
+        buffer is flooded by uvicorn access lines and a 500 traceback is
+        evicted within milliseconds. The file keeps everything, so the
+        traceback is still there when you look.
 
         Args:
             name: "xopat" or "wsi" to limit output; None prints both.
-            n:    Number of trailing lines to show per process.
+            n:    Number of trailing lines to show (ignored when full=True).
+            full: Print the entire log file instead of the last `n` lines.
         """
         targets = {"xopat": self._xopat.proc, "wsi": self._wsi.proc}
         if name is not None:
@@ -95,34 +138,70 @@ class Server:
 
         out = {}
         for key, proc in targets.items():
-            captured = getattr(proc, "_captured", None)
-            lines = list(captured)[-n:] if captured else []
-            out[key] = "".join(lines)
-            print(f"===== {key} (last {len(lines)} lines) =====")
-            print(out[key] or "(no output captured)")
+            text = ""
+            log_path = getattr(proc, "_logfile", None)
+            if log_path:
+                try:
+                    with open(log_path, "r", errors="replace") as f:
+                        lines = f.readlines()
+                    text = "".join(lines if full else lines[-n:])
+                except Exception:
+                    text = ""
+            if not text:
+                # Fall back to the ring buffer (e.g. file open failed).
+                captured = getattr(proc, "_captured", None)
+                buf = list(captured)[-n:] if captured else []
+                text = "".join(buf)
+            out[key] = text
+            src = log_path if log_path else "ring buffer"
+            print(f"===== {key} ({src}) =====")
+            print(text or "(no output captured)")
         return out
+
+    def log_path(self, name="wsi"):
+        """Return the filesystem path of a process's persistent log file
+        (or None). Handy for shell access, e.g.:
+            !grep -i -A40 traceback $(...)   /   !tail -f <path>
+        """
+        proc = {"xopat": self._xopat.proc, "wsi": self._wsi.proc}.get(name.lower())
+        if proc is None:
+            raise ValueError("name must be 'xopat' or 'wsi'")
+        return getattr(proc, "_logfile", None)
 
     def diagnose(self, slide=None):
         """Probe both backends and print each status code + response body.
 
         Reproduces what the iframe does from the Python side so a 500 that
-        shows up as a blank page becomes readable: the xopat node server
-        writes the exact exception string into the 500 body, so this reveals
-        whether the index hit is failing with EMFILE, ENOMEM, or something
-        else. Also checks WSI-Service liveness.
+        shows up as a blank page becomes readable: both servers write the
+        failing exception into the response body. Pass `slide` to also probe
+        the real WSI request the viewer makes (`/v3/slides/info`) — that, not
+        the index, is what fails when the viewer "can't connect".
+
+        NOTE: WSI-Service `/alive` is deliberately NOT probed. In the
+        PyInstaller binary it 500s on every boot because it calls
+        importlib.metadata.version() for each plugin and the bundle ships no
+        dist-info metadata (PackageNotFoundError) — a persistent health-route
+        bug unrelated to the intermittent viewer failure. `/docs` is a
+        metadata-free liveness check, and `/v3/slides/info` is the request
+        that actually matters.
 
         Args:
             slide: optional slide id; if given, also probes the viewer at
-                   `/?slides=<id>` in addition to the bare index.
+                   `/?slides=<id>` and WSI `/v3/slides/info?slide_id=<id>`.
         """
         probes = [("xopat index", f"http://127.0.0.1:{XOPAT_PORT}/")]
         if slide is not None:
             slide_q = str(slide).replace(">", "%3E")
+            slide_id = _urlquote(str(slide), safe="")
             probes.append(
                 ("xopat slide", f"http://127.0.0.1:{XOPAT_PORT}/?slides={slide_q}")
             )
-        # /alive is the WSI-Service liveness route; fall back to /docs.
-        probes.append(("wsi alive", f"http://127.0.0.1:{WSI_PORT}/alive"))
+            probes.append(
+                ("wsi slide info",
+                 f"http://127.0.0.1:{WSI_PORT}/v3/slides/info?slide_id={slide_id}")
+            )
+        # Metadata-free WSI liveness (see note above re: /alive).
+        probes.append(("wsi docs", f"http://127.0.0.1:{WSI_PORT}/docs"))
 
         results = {}
         for label, url in probes:
@@ -133,6 +212,66 @@ class Server:
             snippet = body if len(body) <= 2000 else body[:2000] + "… [truncated]"
             print(snippet or "(empty body)")
         return results
+
+    def health(self):
+        """Print and return a resource snapshot of both processes: liveness,
+        resident memory (MB), open file descriptors, and the open-file limit.
+
+        Use this to tell the two failure hypotheses apart at a glance:
+        open_fds approaching nofile_soft => heading for EMFILE; rss_mb
+        ballooning => heading for ENOMEM. (Memory/fd require /proc, i.e.
+        Linux/Colab.)"""
+        out = {}
+        for key, proc in (("xopat", self._xopat.proc), ("wsi", self._wsi.proc)):
+            h = _proc_health(proc)
+            out[key] = h
+            print(
+                f"{key:6} pid={h['pid']} running={h['running']} "
+                f"rss={h['rss_mb']}MB fds={h['open_fds']} "
+                f"nofile={h['nofile_soft']}/{h['nofile_hard']}"
+            )
+        return out
+
+    def monitor(self, seconds=60, interval=2, slide=None, stop_on_error=True):
+        """Poll the viewer (and optionally a real WSI slide request) while
+        sampling each process's memory and fd count, printing one line per
+        tick. Run this, then load 4+ viewers in the notebook, and watch which
+        resource climbs and the exact moment a probe flips to 500 — that
+        pins EMFILE vs ENOMEM with evidence instead of a guess.
+
+        Args:
+            seconds:       total wall-clock duration to sample.
+            interval:      seconds between samples.
+            slide:         if given, probes WSI `/v3/slides/info` each tick;
+                           otherwise probes only the xopat index.
+            stop_on_error: stop and dump the failing body on the first non-200.
+        """
+        if slide is not None:
+            url = (f"http://127.0.0.1:{WSI_PORT}/v3/slides/info"
+                   f"?slide_id={_urlquote(str(slide), safe='')}")
+        else:
+            url = f"http://127.0.0.1:{XOPAT_PORT}/"
+
+        t0 = time.monotonic()
+        deadline = t0 + seconds
+        samples = []
+        while time.monotonic() < deadline:
+            status, body = _probe(url)
+            h = _proc_health(self._xopat.proc)
+            w = _proc_health(self._wsi.proc)
+            elapsed = round(time.monotonic() - t0)
+            print(
+                f"[t+{elapsed:>4}s] probe={status} "
+                f"xopat(rss={h['rss_mb']}MB fds={h['open_fds']}) "
+                f"wsi(rss={w['rss_mb']}MB fds={w['open_fds']})"
+            )
+            samples.append((elapsed, status, h, w))
+            if stop_on_error and status not in (200, None):
+                print(f"---- {url} returned {status}; body: ----")
+                print(body[:2000] if body else "(empty)")
+                break
+            time.sleep(interval)
+        return samples
 
 
 def run_server(data_dir=None):
