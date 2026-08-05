@@ -91,6 +91,11 @@ def iframe_style(width, height, cap_height):
     return f"width:{width};height:{height}px;border:1px solid #ccc;"
 
 
+# Number of viewer iframes in the notebook DOM at which the toolbar starts
+# warning about accumulation. Shared with the Colab backend.
+ACCUMULATION_WARN_AT = 6
+
+
 STALL_HINT_HTML = (
     '<div style="margin:4px 0 10px 0;font-family:sans-serif;font-size:12px;'
     'color:#6b7280;line-height:1.45;max-width:720px;">'
@@ -114,7 +119,9 @@ def reload_toolbar(uid, open_url, reload_mode):
     The toolbar also carries a hint about white/blank viewports and an
     accumulation warning: rendering the WSI viewer multiple times in the
     same notebook tab keeps multiple WebGL contexts alive, which is a
-    common cause of stalls on top of plain memory pressure.
+    common cause of stalls on top of plain memory pressure. The warning
+    only fires from ACCUMULATION_WARN_AT iframes up — the DOM count
+    includes dead nodes, so a small number means nothing.
 
     Args:
         uid: matches the iframe id `xopat-frame-<uid>` (and, for
@@ -167,7 +174,12 @@ def reload_toolbar(uid, open_url, reload_mode):
     const status = document.getElementById('xopat-status-{uid}');
     function updateAccumulationWarning() {{
         const all = document.querySelectorAll('iframe[id^="xopat-frame-"]');
-        if (all.length > 1) {{
+        // Threshold, not `> 1`: the selector also matches dead nodes —
+        // stale outputs scrolled out of view and iframe shells restored
+        // from a saved .ipynb (their <script> never re-runs, so they host
+        // no viewer). A couple of those are normal and harmless; only a
+        // real pile-up is worth warning about.
+        if (all.length >= {ACCUMULATION_WARN_AT}) {{
             status.textContent = all.length + ' viewers open in this notebook — '
                 + 'rendering may stall. Clear older outputs.';
             status.style.color = '#a16207';

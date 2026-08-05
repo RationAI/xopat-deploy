@@ -10,7 +10,11 @@ import subprocess
 import uuid
 from urllib.parse import quote as _urlquote
 
-from ._post import attr as _attr, STALL_HINT_HTML as _STALL_HINT_HTML
+from ._post import (
+    attr as _attr,
+    STALL_HINT_HTML as _STALL_HINT_HTML,
+    ACCUMULATION_WARN_AT as _ACCUMULATION_WARN_AT,
+)
 from .download import get_binaries_dir, get_wsi_binary
 from .wsi import WSI_PORT
 from .xopat import XOPAT_PORT
@@ -192,9 +196,9 @@ def _render_recovery_toolbar(path):
         Colab's bridge is not in the path at all. Last-resort recovery
         when even reload doesn't unstick events.
 
-    Also surfaces an accumulation warning if more than one proxy iframe
-    is present in the document — stale iframes from prior cell runs are
-    a frequent cause of "input swallowed" in Colab.
+    Also surfaces an accumulation warning once ACCUMULATION_WARN_AT proxy
+    iframes are present in the document — stale iframes from prior cell
+    runs are a frequent cause of "input swallowed" in Colab.
 
     No height clamp here: Colab renders cell outputs inside a sandboxed
     `outputframe.html`, so `vh` is relative to that frame (often a small
@@ -242,7 +246,10 @@ def _render_recovery_toolbar(path):
 
     function updateAccumulationWarning() {{
         const all = document.querySelectorAll(proxyHostSel);
-        if (all.length > 1) {{
+        // Threshold, not `> 1`: the selector matches every proxy iframe in
+        // the document, including stale outputs from prior runs that no
+        // longer host a working viewer. Only warn on a real pile-up.
+        if (all.length >= {_ACCUMULATION_WARN_AT}) {{
             status.textContent = all.length + ' viewer iframes in this notebook — '
                 + 'older outputs may swallow input. Try Cell → Clear All Output.';
             status.style.color = '#a16207';
