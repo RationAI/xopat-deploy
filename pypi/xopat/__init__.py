@@ -15,7 +15,7 @@ from ._post import (
 )
 from .download import clear_binary_cache, get_wsi_binary, get_xopat_binary
 from .process import free_port
-from .wsi import WSI_PORT, start_wsi_service
+from .wsi import WSI_PORT, resolve_data_dir, start_wsi_service
 from .xopat import XOPAT_PORT, start_xopat
 from .colab import is_colab, setup_colab, display_colab, display_colab_post
 from .jupyterhub import (
@@ -282,8 +282,11 @@ def run_server(data_dir=None):
     configures the proxy-based environment.
 
     Args:
-        data_dir: Path to the directory containing slide files.
-                  Defaults to current working directory (or /content on Colab).
+        data_dir: Path to the directory containing slide files. A relative
+                  path is resolved against the current working directory and
+                  `~` is expanded; the resolved absolute path is printed on
+                  startup. Defaults to the current working directory (or
+                  /content on Colab).
     Returns:
         Server instance with wsi_url and xopat_url attributes.
     """
@@ -292,6 +295,16 @@ def run_server(data_dir=None):
 
     if data_dir is None:
         data_dir = "/content" if is_colab() else os.getcwd()
+
+    requested_dir = str(data_dir)
+    data_dir = resolve_data_dir(data_dir)
+    if not os.path.isdir(data_dir):
+        print(f"Warning: slides folder does not exist: {data_dir}")
+        if not os.path.isabs(os.path.expanduser(requested_dir)):
+            print(f"  (you passed {requested_dir!r}; relative paths are "
+                  f"resolved against the current working directory, "
+                  f"{os.getcwd()})")
+        print("  Tile requests will fail with HTTP 500 until it exists.")
 
     free_port(WSI_PORT, "WSI-Service")
     free_port(XOPAT_PORT, "xOpat")

@@ -109,6 +109,9 @@ xopat.display(server, "slide.tiff")
 server.stop()
 ```
 
+`data_dir` may also be relative or use `~` — `run_server(data_dir="slides")` means `<cwd>/slides`.
+The resolved absolute path is printed on startup, and you get a warning if it does not exist.
+
 ### Google Colab
 
 Just works. The viewer is served through Colab's `serve_kernel_port_as_iframe` helper so the
@@ -206,7 +209,7 @@ xopat.display_link(server, "dev_setup")        # renders a clickable button
 
 | Function | Description |
 |---|---|
-| `run_server(data_dir=None)` | Download (if needed) and start WSI-Service + xOpat. Auto-detects and configures the host. `data_dir` defaults to the CWD (or `/content` on Colab). Returns a `Server`. |
+| `run_server(data_dir=None)` | Download (if needed) and start WSI-Service + xOpat. Auto-detects and configures the host. `data_dir` defaults to the CWD (or `/content` on Colab); a relative path is resolved against the CWD and `~` is expanded, and the resolved absolute path is printed on startup (with a warning if it does not exist). Returns a `Server`. |
 | `display(server, slide, width="100%", height=None)` | Embed a slide (`str`) or a session (`dict`) as an iframe in the current cell. |
 | `display_link(server, path, label=None)` | Render a button that opens the viewer at `path` in a new tab. |
 | `setup_jupyterhub(jupyterhub_host)` | Configure xOpat for JupyterHub. **Call before `run_server()`** on a hub. |
