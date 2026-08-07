@@ -108,7 +108,7 @@ STALL_HINT_HTML = (
 )
 
 
-def reload_toolbar(uid, open_url, reload_mode):
+def reload_toolbar(uid, open_url, reload_mode, open_form=False):
     """Render a Reload / Open-in-new-tab toolbar below a viewer iframe.
 
     Used by the JupyterHub and local-Jupyter display backends. Both run
@@ -126,11 +126,18 @@ def reload_toolbar(uid, open_url, reload_mode):
     Args:
         uid: matches the iframe id `xopat-frame-<uid>` (and, for
              `reload_mode="form"`, the form id `xopat-form-<uid>`).
-        open_url: URL for "Open in new tab". Pass None/"" to hide
-                  the link (POST sessions can't be re-opened by URL alone).
+        open_url: URL for "Open in new tab" as a plain link. Used by the
+                  GET-by-slide-id paths, where the whole viewer state
+                  lives in the URL.
         reload_mode: 'src' to re-assign the iframe src; 'form' to
                      re-submit `xopat-form-<uid>`.
+        open_form: POST-session variant of the same button. The session
+                   lives in the request body, not in a URL, so there is
+                   nothing to put in an href — instead the button clones
+                   `xopat-form-<uid>` and re-submits the clone with
+                   `target="_blank"`. Ignored when `open_url` is set.
     """
+    open_script = ""
     if open_url:
         open_link = (
             f'<a id="xopat-open-{uid}" href="{attr(open_url)}" target="_blank" '
@@ -138,6 +145,33 @@ def reload_toolbar(uid, open_url, reload_mode):
             f'background:#f9fafb;border-radius:4px;color:#374151;'
             f'text-decoration:none;">Open in new tab</a>'
         )
+    elif open_form:
+        open_link = (
+            f'<button id="xopat-open-{uid}" type="button" '
+            f'style="padding:4px 10px;border:1px solid #d1d5db;'
+            f'background:#f9fafb;border-radius:4px;color:#374151;'
+            f'cursor:pointer;font:inherit;">Open in new tab</button>'
+        )
+        # A POST session has no URL to link to, so the new tab has to be
+        # opened by re-submitting the form. Two details matter:
+        #  * submit from inside the click handler — the user gesture is
+        #    what keeps popup blockers from swallowing the new tab;
+        #  * submit a *clone*, not the original: flipping the original's
+        #    target to _blank would leave it pointed away from the
+        #    embedded iframe and break the Reload button next to us.
+        open_script = f"""
+    document.getElementById('xopat-open-{uid}').addEventListener('click', function() {{
+        const form = document.getElementById('xopat-form-{uid}');
+        if (!form) {{ status.textContent = 'Form not found.'; return; }}
+        const clone = form.cloneNode(true);
+        clone.id = 'xopat-form-{uid}-tab';
+        clone.target = '_blank';
+        clone.rel = 'noopener';
+        document.body.appendChild(clone);
+        clone.submit();
+        setTimeout(function() {{ clone.remove(); }}, 0);
+    }});
+"""
     else:
         open_link = ""
 
@@ -193,6 +227,7 @@ def reload_toolbar(uid, open_url, reload_mode):
         {reload_action}
         setTimeout(updateAccumulationWarning, 500);
     }});
+{open_script}
 }})();
 </script>
 """

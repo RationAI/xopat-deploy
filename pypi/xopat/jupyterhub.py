@@ -189,5 +189,5 @@ def display_jupyterhub_post(xopat_url, session, width, height, cap_height):
 {inputs}
 </form>
 <script>document.getElementById("xopat-form-{uid}").submit();</script>
-""" + _reload_toolbar(uid, open_url=None, reload_mode="form")))
+""" + _reload_toolbar(uid, open_url=None, reload_mode="form", open_form=True)))
 
