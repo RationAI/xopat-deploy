@@ -98,6 +98,33 @@ jobs:
                  -p installer_win\packages `
                   "xOpat-Installer-Windows-${{ inputs.tag }}.exe"
 
+      - name: Zip installer for signing
+        shell: pwsh
+        run: Compress-Archive -Path "xOpat-Installer-Windows-${{ inputs.tag }}.exe" -DestinationPath unsigned.zip
+
+      - name: Upload unsigned artifact
+        uses: actions/upload-artifact@v4
+        id: upload-artifact
+        with:
+          name: unsigned-installer
+          path: unsigned.zip
+          retention-days: 1
+
+      - name: Submit signing request to SignPath
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: 'b24622f8-9be0-4243-ad9e-0751b08d3a8d'
+          project-slug: 'xopat'
+          signing-policy-slug: 'test-signing' 
+          github-artifact-id: '${{ steps.upload-artifact.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: 'signed'
+
+      - name: Replace installer with signed version
+        shell: pwsh
+        run: Copy-Item "signed\xOpat-Installer-Windows-${{ inputs.tag }}.exe" "xOpat-Installer-Windows-${{ inputs.tag }}.exe" -Force
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
