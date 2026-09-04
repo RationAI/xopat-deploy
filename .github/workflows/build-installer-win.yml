@@ -20,6 +20,11 @@ on:
         description: 'Branch to build from. Leave empty to use the branch selected above.'
         required: false
         type: string
+      draft:
+        description: 'Create as draft release (not publicly visible)'
+        required: false
+        type: boolean
+        default: false
 jobs:
   build-installer-windows:
     name: Windows
@@ -131,5 +136,6 @@ jobs:
           tag_name: ${{ inputs.tag }}
           name: ${{ inputs.tag }}
           files: xOpat-Installer-Windows-*.exe
+          draft: ${{ inputs.draft }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
