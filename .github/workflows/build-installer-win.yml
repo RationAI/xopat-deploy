@@ -103,16 +103,12 @@ jobs:
                  -p installer_win\packages `
                   "xOpat-Installer-Windows-${{ inputs.tag }}.exe"
 
-      - name: Zip installer for signing
-        shell: pwsh
-        run: Compress-Archive -Path "xOpat-Installer-Windows-${{ inputs.tag }}.exe" -DestinationPath unsigned.zip
-
       - name: Upload unsigned artifact
         uses: actions/upload-artifact@v4
         id: upload-artifact
         with:
           name: unsigned-installer
-          path: unsigned.zip
+          path: xOpat-Installer-Windows-${{ inputs.tag }}.exe
           retention-days: 1
 
       - name: Submit signing request to SignPath
