@@ -20,6 +20,11 @@ on:
         description: 'Branch to build from. Leave empty to use the branch selected above.'
         required: false
         type: string
+      draft:
+        description: 'Create as draft release (not publicly visible)'
+        required: false
+        type: boolean
+        default: false
 jobs:
   build-installer-windows:
     name: Windows
@@ -98,11 +103,35 @@ jobs:
                  -p installer_win\packages `
                   "xOpat-Installer-Windows-${{ inputs.tag }}.exe"
 
+      - name: Upload unsigned artifact
+        uses: actions/upload-artifact@v4
+        id: upload-artifact
+        with:
+          name: unsigned-installer
+          path: xOpat-Installer-Windows-${{ inputs.tag }}.exe
+          retention-days: 1
+
+      - name: Submit signing request to SignPath
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: 'b24622f8-9be0-4243-ad9e-0751b08d3a8d'
+          project-slug: 'xopat'
+          signing-policy-slug: 'test-signing' 
+          github-artifact-id: '${{ steps.upload-artifact.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: 'signed'
+
+      - name: Replace installer with signed version
+        shell: pwsh
+        run: Copy-Item "signed\xOpat-Installer-Windows-${{ inputs.tag }}.exe" "xOpat-Installer-Windows-${{ inputs.tag }}.exe" -Force
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
           name: ${{ inputs.tag }}
           files: xOpat-Installer-Windows-*.exe
+          draft: ${{ inputs.draft }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
