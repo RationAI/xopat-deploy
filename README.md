@@ -102,3 +102,77 @@ published binaries and the PyPI package.
 ```bash
 git clone --recurse-submodules https://github.com/RationAI/xopat-deploy.git
 ```
+
+## Releases
+
+Publishing a release `X.Y.Z` in [RationAI/xopat](https://github.com/RationAI/xopat)
+starts `.github/workflows/release.yml` here (through a `repository_dispatch`
+sent by xopat's `deploy-dispatch.yml`). One run produces one release
+**`vX.Y.Z`**:
+
+| Asset | |
+|---|---|
+| `xopat_linux_vX.Y.Z.zip`, `xopat_windows_vX.Y.Z.zip` | Standalone server binaries, built from the xOpat tag `X.Y.Z` |
+| `xOpat-Installer-Linux-X.Y.Z` | Linux installer |
+| `xOpat-Installer-Windows-X.Y.Z.exe` | Windows installer, signed through SignPath |
+| `*.sha256` | Checksum of each file |
+
+It then publishes the pip package and writes a "Desktop installers and pip"
+block into the xOpat release notes. The pip package keeps its own version
+line (`0.1.N`, bumped by one per release) and is pinned to the binaries of
+exactly this release; the mapping is recorded in the release notes here.
+WSI-Service keeps its independent `wsi-v*` releases; the newest is bundled.
+
+A deploy-only fix for an already released version is a manual run with
+`revision: 2` — it publishes `vX.Y.Z-deploy.2` and moves the link in the
+xOpat release. A published release is never rebuilt in place.
+
+Manual runs default to `dry_run`: everything is built and signed with the
+test certificate, and the release is left as a **draft**.
+
+### Code signing
+
+- The installer is built, uploaded and submitted to SignPath within one job
+  of `release.yml`. SignPath verifies the artifact's origin against that
+  run, so those steps must stay together, in that workflow, in this
+  repository, on GitHub-hosted runners.
+- The signing policy is the repository variable `SIGNPATH_SIGNING_POLICY`
+  (default `test-signing`). Pre-releases and dry runs always use
+  `test-signing`.
+- **Which release is really signed is decided per release, in GitHub.** Any
+  policy other than `test-signing` pauses the run at the job *Approve
+  production signature* until a reviewer of the environment
+  `production-signing` approves it (no runner is held; GitHub waits up to
+  30 days). Approve = the production signature is requested. Reject = the
+  run stops and nothing is published; to ship that version with the test
+  certificate instead, start the workflow by hand with
+  `signing_policy: test-signing`. The run refuses to start with a
+  production policy if that environment has no required reviewers.
+- **Recognising the request in SignPath.** Only approved runs reach the
+  production policy, so every request waiting there is a release someone
+  approved here; tests, dry runs and pre-releases arrive under
+  `test-signing`. The Windows job additionally prints a notice and a summary
+  table *before* submitting: file name (it carries the version), SHA-256 of
+  the unsigned installer, commit, and the run link — compare them with the
+  origin data SignPath shows on the request.
+- The release stays a draft until the signed installer came back and its
+  signature was checked. There is no unsigned fallback.
+- If the SignPath policy itself needs approval, the job waits for it, up to
+  about 5.5 hours. If the wait runs out, use **Re-run failed jobs**: only
+  the Windows installer is rebuilt and a new request is submitted, without
+  asking for the GitHub approval again. SignPath evaluates a limited number
+  of re-runs and a project can forbid them (`disallow_reruns`); in that case
+  start a fresh run.
+
+### Setup
+
+| Where | Name | Purpose |
+|---|---|---|
+| xopat, secret | `XOPAT_DEPLOY_TOKEN` | Contents: write on xopat-deploy — sends the dispatch |
+| xopat-deploy, secret | `XOPAT_RELEASE_TOKEN` | Contents: write on xopat — writes the link block |
+| xopat-deploy, secret | `SIGNPATH_API_TOKEN` | SignPath submitter token |
+| xopat-deploy, variable | `SIGNPATH_SIGNING_POLICY` | Optional, e.g. `release-signing` |
+| xopat-deploy, environment | `production-signing` | Required reviewers = who may approve a production signature. Needed as soon as the variable above is set |
+
+The `build-*` and `pypi-publish` workflows remain for building a single
+piece by hand.

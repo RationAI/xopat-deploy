@@ -4,3 +4,4 @@ __pycache__/
 .ipynb_checkpoints/
 venv/
 pypi/xopat/wsi_service.env
+.idea/

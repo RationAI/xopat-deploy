@@ -1,0 +1,679 @@
+name: Release
+
+# One xOpat release X.Y.Z -> one release vX.Y.Z here: the standalone binaries, the
+# Linux installer, the SignPath-signed Windows installer, their checksums, and the
+# pip package pinned to exactly these binaries. Finally the xOpat release receives
+# a link block pointing back at it.
+#
+# Started by RationAI/xopat (.github/workflows/deploy-dispatch.yml) through a
+# repository_dispatch when a release is published there, or by hand below.
+#
+# Signing: the installer is built, uploaded and submitted to SignPath inside ONE job
+# of THIS top-level workflow - SignPath verifies the origin of the artifact against
+# that run, so do not move those steps into a reusable workflow or another
+# repository. The release stays a draft until the signed installer came back and was
+# verified; there is no unsigned fallback. A policy that needs manual approval makes
+# the job wait (up to ~5.5 h). If that runs out: "Re-run failed jobs" rebuilds only
+# the Windows installer and submits a fresh request.
+#
+# Which release is REALLY signed: a production policy (anything but test-signing) is
+# requested only after a reviewer approved the "production-signing" environment for
+# that run. Dry runs, pre-releases and unapproved runs can never reach it, so every
+# request waiting under the production policy in SignPath is a release somebody
+# deliberately approved here. Rejecting the gate publishes nothing.
+
+run-name: >-
+  Release ${{ github.event.client_payload.version || inputs.version }}${{ inputs.revision && format(' (deploy.{0})', inputs.revision) || '' }}${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && ' - dry run' || '' }}
+
+on:
+  repository_dispatch:
+    types: [xopat-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'xOpat release tag to package (e.g. 3.2.2). Must exist in RationAI/xopat.'
+        required: true
+        type: string
+      revision:
+        description: 'Deploy-only rebuild of an already published version: 2, 3, ... (release vX.Y.Z-deploy.N)'
+        required: false
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+      wsi_tag:
+        description: 'WSI-Service tag (e.g. wsi-v1.0.2). Empty = latest.'
+        required: false
+        type: string
+      signing_policy:
+        description: 'SignPath signing policy slug. Empty = repository variable SIGNPATH_SIGNING_POLICY, else test-signing.'
+        required: false
+        type: string
+      pypi_target:
+        description: 'Publish the pip package (never on a dry run)'
+        required: true
+        type: choice
+        options: [none, testpypi, pypi]
+        default: none
+      dry_run:
+        description: 'Build and sign with test-signing, leave the release as a DRAFT, touch nothing else'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.client_payload.version || inputs.version }}
+  cancel-in-progress: false
+
+env:
+  XOPAT_REPO: RationAI/xopat
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  prepare:
+    name: Plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read   # read the protection rules of the signing environment
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      revision: ${{ steps.plan.outputs.revision }}
+      tag: ${{ steps.plan.outputs.tag }}
+      label: ${{ steps.plan.outputs.label }}
+      wsi_tag: ${{ steps.plan.outputs.wsi_tag }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
+      pypi_target: ${{ steps.plan.outputs.pypi_target }}
+      signing_policy: ${{ steps.plan.outputs.signing_policy }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Everything caller-supplied arrives through env and is validated below;
+          # nothing is interpolated into a script.
+          VERSION: ${{ github.event.client_payload.version || inputs.version }}
+          REVISION: ${{ inputs.revision }}
+          PRERELEASE: ${{ github.event.client_payload.prerelease || inputs.prerelease }}
+          WSI_TAG: ${{ inputs.wsi_tag }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          PYPI_TARGET: ${{ github.event_name == 'repository_dispatch' && 'pypi' || inputs.pypi_target }}
+          POLICY_INPUT: ${{ inputs.signing_policy }}
+          POLICY_VARIABLE: ${{ vars.SIGNPATH_SIGNING_POLICY }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || fail "Not a release version: '$VERSION'"
+          [[ -z "$REVISION" || "$REVISION" =~ ^[1-9][0-9]*$ ]] || fail "Not a revision number: '$REVISION'"
+          gh api "repos/$XOPAT_REPO/git/ref/tags/$VERSION" --silent \
+            || fail "$XOPAT_REPO has no tag '$VERSION'"
+
+          label="$VERSION${REVISION:+-deploy.$REVISION}"
+          tag="v$label"
+
+          # A published release is never rebuilt in place: installers and pip
+          # packages already point at its assets.
+          if draft="$(gh release view "$tag" --json isDraft -q .isDraft 2>/dev/null)"; then
+            [ "$draft" = "true" ] || fail "Release $tag is already published. Use 'revision' for a deploy-only rebuild."
+          fi
+
+          if [ -z "$WSI_TAG" ]; then
+            WSI_TAG="$(gh release list --exclude-drafts --limit 100 --json tagName \
+              -q '[.[] | select(.tagName | startswith("wsi-v"))][0].tagName // empty')"
+          fi
+          [[ "$WSI_TAG" =~ ^wsi-v[0-9A-Za-z.-]+$ ]] || fail "No usable WSI-Service tag: '$WSI_TAG'"
+
+          prerelease=false
+          if [ "$PRERELEASE" = "true" ] || [[ "$VERSION" == *-* ]]; then prerelease=true; fi
+          dry_run=false
+          [ "$DRY_RUN" = "true" ] && dry_run=true
+
+          # Only a real, stable release may spend a production signature.
+          policy="${POLICY_INPUT:-${POLICY_VARIABLE:-test-signing}}"
+          if [ "$dry_run" = "true" ] || [ "$prerelease" = "true" ]; then policy=test-signing; fi
+          [[ "$policy" =~ ^[a-z0-9][a-z0-9-]*$ ]] || fail "Not a signing policy slug: '$policy'"
+
+          # The approval gate is only a gate if the environment has reviewers: GitHub
+          # silently creates a missing environment with no protection at all. Refuse
+          # to request a production signature through an open door.
+          if [ "$policy" != "test-signing" ]; then
+            reviewers="$(gh api "repos/$GITHUB_REPOSITORY/environments/production-signing" \
+              -q '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>/dev/null || echo 0)"
+            [ "${reviewers:-0}" -gt 0 ] || fail "Policy '$policy' needs the environment 'production-signing' with required reviewers (Settings > Environments)."
+          fi
+
+          pypi_target="${PYPI_TARGET:-none}"
+          if [ "$dry_run" = "true" ] || [ "$prerelease" = "true" ]; then pypi_target=none; fi
+
+          {
+            echo "version=$VERSION"
+            echo "revision=$REVISION"
+            echo "tag=$tag"
+            echo "label=$label"
+            echo "wsi_tag=$WSI_TAG"
+            echo "prerelease=$prerelease"
+            echo "dry_run=$dry_run"
+            echo "pypi_target=$pypi_target"
+            echo "signing_policy=$policy"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Release plan"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| xOpat | \`$VERSION\` |"
+            echo "| Release here | \`$tag\`$([ "$dry_run" = true ] && echo ' (draft only)') |"
+            echo "| WSI-Service | \`$WSI_TAG\` |"
+            echo "| SignPath policy | \`$policy\` |"
+            echo "| pip | $pypi_target |"
+            echo "| Pre-release | $prerelease |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-xopat:
+    name: xOpat binary (${{ matrix.platform }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+          - os: windows-latest
+            platform: windows
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The release TAG, not a branch: what ships is what was released.
+      - name: Check out xOpat ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule update --init external/xopat
+          cd external/xopat
+          git fetch --no-tags --force origin "refs/tags/$VERSION:refs/tags/$VERSION"
+          git checkout --detach "refs/tags/$VERSION"
+          built="$(node -p "require('./package.json').version")"
+          if [ "$built" != "$VERSION" ]; then
+            echo "::error::Tag $VERSION carries package.json version $built - the binary would report the wrong version."
+            exit 1
+          fi
+          echo "xOpat at $(git rev-parse HEAD) (tag $VERSION)"
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x scripts/linux/build_xopat.sh
+          scripts/linux/build_xopat.sh
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts\windows\build_xopat.ps1
+
+      # Asset name shape is the one pypi/xopat/download.py requests:
+      # xopat_<platform>_<tag>.zip
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          zip="xopat_linux_${TAG}.zip"
+          (cd dist/xopat && zip -r "../../$zip" .)
+          sha256sum "$zip" > "$zip.sha256"
+          cat "$zip.sha256"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = "xopat_windows_$env:TAG.zip"
+          Compress-Archive -Path dist\xopat\* -DestinationPath $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          # sha256sum-compatible: "<hex>  <filename>"
+          "$hash  $zip" | Out-File -Encoding ascii "$zip.sha256"
+          Get-Content "$zip.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xopat-${{ matrix.platform }}
+          path: |
+            xopat_${{ matrix.platform }}_*.zip
+            xopat_${{ matrix.platform }}_*.zip.sha256
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  installer-linux:
+    name: Installer (Linux)
+    needs: [prepare, build-xopat]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      REVISION: ${{ needs.prepare.outputs.revision }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      LABEL: ${{ needs.prepare.outputs.label }}
+      WSI_TAG: ${{ needs.prepare.outputs.wsi_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: xopat-linux
+          path: build
+
+      - name: Assemble payload
+        run: |
+          set -euo pipefail
+          data=installer_linux/packages/xopat/data
+          unzip -q "build/xopat_linux_${TAG}.zip" -d "$data/xopat"
+          gh release download "$WSI_TAG" -p "wsi_service_binary_linux_${WSI_TAG}.zip" -O wsi.zip
+          unzip -q wsi.zip -d "$data/wsi-service"
+          rm wsi.zip
+          cp envs/wsi_service.env "$data/wsi-service/.env"
+          cp assets/xopat-logo.png "$data/xopat-logo.png"
+          cp assets/xopat-logo.ico installer_linux/config/xopat-logo.ico
+
+      - name: Stamp version
+        run: python3 scripts/stamp_version.py "$VERSION" --revision "$REVISION"
+
+      - name: Install Qt IFW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.0'
+          tools: 'tools_ifw'
+          cache: true
+
+      - name: Build installer
+        run: |
+          set -euo pipefail
+          out="xOpat-Installer-Linux-${LABEL}"
+          "$IQTA_TOOLS/QtInstallerFramework/4.7/bin/binarycreator" \
+            -c installer_linux/config/config.xml \
+            -p installer_linux/packages \
+            "$out"
+          sha256sum "$out" > "$out.sha256"
+          cat "$out.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-linux
+          path: xOpat-Installer-Linux-*
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  # The per-release decision. Waits (no runner, up to 30 days) for a reviewer of the
+  # environment; skipped entirely when the test certificate is used.
+  approve-signing:
+    name: Approve production signature (${{ needs.prepare.outputs.signing_policy }}) for ${{ needs.prepare.outputs.label }}
+    needs: [prepare, build-xopat]
+    if: needs.prepare.outputs.signing_policy != 'test-signing'
+    runs-on: ubuntu-latest
+    environment: production-signing
+    steps:
+      - env:
+          LABEL: ${{ needs.prepare.outputs.label }}
+          POLICY: ${{ needs.prepare.outputs.signing_policy }}
+        run: echo "Production signature (\`$POLICY\`) approved for xOpat \`$LABEL\` by a reviewer of \`production-signing\`." >> "$GITHUB_STEP_SUMMARY"
+
+  installer-windows:
+    name: Installer (Windows, signed)
+    needs: [prepare, build-xopat, approve-signing]
+    # Runs after an approved gate, or without one for test-signing. A rejected gate
+    # fails approve-signing, which stops here - and with it the whole release.
+    if: >-
+      !cancelled() && needs.build-xopat.result == 'success' &&
+      (needs.approve-signing.result == 'success' ||
+       (needs.approve-signing.result == 'skipped' && needs.prepare.outputs.signing_policy == 'test-signing'))
+    runs-on: windows-latest
+    # Leaves room for a manual SignPath approval; 360 is the hosted-runner ceiling.
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read   # SignPath reads this run and its artifact to verify the origin
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      REVISION: ${{ needs.prepare.outputs.revision }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      LABEL: ${{ needs.prepare.outputs.label }}
+      WSI_TAG: ${{ needs.prepare.outputs.wsi_tag }}
+      SIGNING_POLICY: ${{ needs.prepare.outputs.signing_policy }}
+      INSTALLER: xOpat-Installer-Windows-${{ needs.prepare.outputs.label }}.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: xopat-windows
+          path: build
+
+      - name: Assemble payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $data = "installer_win\packages\xopat\data"
+          Expand-Archive "build\xopat_windows_$env:TAG.zip" -DestinationPath "$data\xopat"
+          gh release download $env:WSI_TAG -p "wsi_service_binary_windows_$env:WSI_TAG.zip" -O wsi.zip
+          if ($LASTEXITCODE -ne 0) { throw "WSI-Service download failed" }
+          Expand-Archive wsi.zip -DestinationPath "$data\wsi-service"
+          Remove-Item wsi.zip
+          Copy-Item envs\wsi_service.env "$data\wsi-service\.env"
+          Copy-Item assets\xopat-logo.ico installer_win\config\xopat-logo.ico
+
+      # Before the tray app is built: PyInstaller embeds version_info.txt.
+      - name: Stamp version
+        shell: bash
+        run: python scripts/stamp_version.py "$VERSION" --revision "$REVISION"
+
+      - name: Build tray app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install pystray Pillow pyinstaller
+          Set-Location installer_win
+          pyinstaller xopat_tray.spec
+          if ($LASTEXITCODE -ne 0) { throw "pyinstaller failed" }
+          Copy-Item -Recurse dist\xopat_tray_binary packages\xopat\data\xopat_tray_binary
+
+      - name: Install Qt IFW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.0'
+          tools: 'tools_ifw'
+          cache: true
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ifw = "$env:IQTA_TOOLS\QtInstallerFramework\4.7\bin\binarycreator.exe"
+          & $ifw -c installer_win\config\config.xml -p installer_win\packages $env:INSTALLER
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $env:INSTALLER)) { throw "binarycreator failed" }
+
+      # --- SignPath: keep these steps together, in this job, in this workflow. ---
+      - name: Upload unsigned artifact
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer
+          path: ${{ env.INSTALLER }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+      # What to look for in SignPath before approving there: this file, this hash,
+      # this run. Printed BEFORE the request is submitted and waited on.
+      - name: Identify the signing request
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 $env:INSTALLER).Hash.ToLower()
+          $kind = if ($env:SIGNING_POLICY -eq 'test-signing') { 'TEST certificate' } else { 'PRODUCTION signature, approved in this run' }
+          $run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/attempts/$env:GITHUB_RUN_ATTEMPT"
+          Write-Host "::notice title=SignPath request for xOpat $env:LABEL::$kind | policy $env:SIGNING_POLICY | file $env:INSTALLER | unsigned SHA-256 $hash | commit $env:GITHUB_SHA | $run"
+          @(
+            "### SignPath signing request"
+            "| | |"
+            "|---|---|"
+            "| Kind | **$kind** |"
+            "| Policy | ``$env:SIGNING_POLICY`` |"
+            "| File | ``$env:INSTALLER`` |"
+            "| Unsigned SHA-256 | ``$hash`` |"
+            "| Commit | ``$env:GITHUB_SHA`` |"
+            "| Run | $run |"
+          ) | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+      - name: Submit signing request to SignPath
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: 'b24622f8-9be0-4243-ad9e-0751b08d3a8d'
+          project-slug: 'xopat'
+          signing-policy-slug: '${{ needs.prepare.outputs.signing_policy }}'
+          github-artifact-id: '${{ steps.unsigned.outputs.artifact-id }}'
+          wait-for-completion: true
+          # Default is 600 s - a request waiting for manual approval would fail the job.
+          wait-for-completion-timeout-in-seconds: 19800
+          output-artifact-directory: 'signed'
+
+      # Fail closed: what gets published is the file SignPath returned, and only if
+      # it really carries a signature. The unsigned build is never a fallback.
+      - name: Verify signature
+        shell: pwsh
+        env:
+          SIGNING_REQUEST: ${{ steps.signpath.outputs.signing-request-web-url }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $file = Join-Path signed $env:INSTALLER
+          if (-not (Test-Path $file)) { throw "SignPath returned no '$env:INSTALLER'. Check the artifact configuration of the SignPath project." }
+          $signature = Get-AuthenticodeSignature $file
+          if (-not $signature.SignerCertificate) { throw "Installer is not signed (status: $($signature.Status))." }
+          # A test certificate chains to no trusted root, so only a production
+          # policy can be required to validate.
+          if ($env:SIGNING_POLICY -ne 'test-signing' -and $signature.Status -ne 'Valid') {
+            throw "Signature does not validate: $($signature.Status) - $($signature.StatusMessage)"
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
+          "$hash  $env:INSTALLER" | Out-File -Encoding ascii "$file.sha256"
+          @(
+            "### Windows installer signature"
+            "| | |"
+            "|---|---|"
+            "| Policy | ``$env:SIGNING_POLICY`` |"
+            "| Signer | $($signature.SignerCertificate.Subject) |"
+            "| Thumbprint | ``$($signature.SignerCertificate.Thumbprint)`` |"
+            "| Status | $($signature.Status) |"
+            "| SHA-256 | ``$hash`` |"
+            "| Request | $env:SIGNING_REQUEST |"
+          ) | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-windows
+          path: |
+            signed/${{ env.INSTALLER }}
+            signed/${{ env.INSTALLER }}.sha256
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  publish:
+    name: Publish release
+    needs: [prepare, build-xopat, installer-linux, installer-windows]
+    # Explicit: the default success() would skip this job whenever the approval gate
+    # upstream was (legitimately) skipped.
+    if: >-
+      !cancelled() && needs.build-xopat.result == 'success' &&
+      needs.installer-linux.result == 'success' && needs.installer-windows.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      LABEL: ${{ needs.prepare.outputs.label }}
+      WSI_TAG: ${{ needs.prepare.outputs.wsi_tag }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      DRY_RUN: ${{ needs.prepare.outputs.dry_run }}
+      SIGNING_POLICY: ${{ needs.prepare.outputs.signing_policy }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: xopat-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create draft, upload, publish
+        run: |
+          set -euo pipefail
+          for f in "xopat_linux_${TAG}.zip" "xopat_windows_${TAG}.zip" \
+                   "xOpat-Installer-Linux-${LABEL}" "xOpat-Installer-Windows-${LABEL}.exe"; do
+            [ -s "dist/$f" ] && [ -s "dist/$f.sha256" ] || { echo "::error::Missing $f or its checksum"; exit 1; }
+          done
+
+          {
+            echo "Desktop installers and standalone binaries of [xOpat $VERSION](https://github.com/$XOPAT_REPO/releases/tag/$VERSION)."
+            echo
+            echo "| Download | |"
+            echo "|---|---|"
+            echo "| \`xOpat-Installer-Windows-${LABEL}.exe\` | Windows installer, signed through SignPath (policy \`$SIGNING_POLICY\`) |"
+            echo "| \`xOpat-Installer-Linux-${LABEL}\` | Linux installer |"
+            echo "| \`xopat_windows_${TAG}.zip\`, \`xopat_linux_${TAG}.zip\` | Standalone server binaries (used by the pip package) |"
+            echo
+            echo "Bundled backend: WSI-Service \`$WSI_TAG\`. Every file has a \`.sha256\` next to it."
+            if [ "$SIGNING_POLICY" = "test-signing" ]; then
+              echo
+              echo "> [!NOTE]"
+              echo "> The Windows installer carries a SignPath **test** certificate. Windows does not trust it and will show a SmartScreen warning."
+            fi
+          } > notes.md
+
+          # The draft exists only from here on; it becomes public in the last command,
+          # after every asset - including the signed installer - is attached.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "xOpat $LABEL" --notes-file notes.md
+          else
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "xOpat $LABEL" --notes-file notes.md
+          fi
+          gh release upload "$TAG" dist/* --clobber
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: release \`$TAG\` left as a draft." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$PRERELEASE" = "true" ]; then
+            gh release edit "$TAG" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi
+          echo "Published https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
+
+  pypi:
+    name: pip package
+    needs: [prepare, publish]
+    # After the release is public: the pip package downloads these assets at runtime.
+    if: >-
+      !cancelled() && needs.publish.result == 'success' &&
+      needs.prepare.outputs.pypi_target != 'none'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # record the pip version in the release notes
+      actions: write    # start pypi-publish.yml
+    outputs:
+      pip_version: ${{ steps.publish.outputs.pip_version }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      WSI_TAG: ${{ needs.prepare.outputs.wsi_tag }}
+      TARGET: ${{ needs.prepare.outputs.pypi_target }}
+    steps:
+      - id: publish
+        run: |
+          set -euo pipefail
+          body="$(gh release view "$TAG" --json body -q .body)"
+
+          # Re-running this job must not burn a second pip version for one release.
+          done_version="$(sed -n 's/.*<!-- pip-version:\([0-9][0-9.]*\) -->.*/\1/p' <<<"$body" | head -n1)"
+          if [ -n "$done_version" ]; then
+            echo "pip package $done_version already published for $TAG."
+            echo "pip_version=$done_version" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The pip package keeps its own version line: latest published, patch + 1.
+          host=pypi.org
+          [ "$TARGET" = "testpypi" ] && host=test.pypi.org
+          latest="$(curl -fsSL "https://$host/pypi/xopat/json" | jq -r '.releases | keys[]' \
+                    | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+          [ -n "$latest" ] || { echo "::error::Could not read the current xopat version from $host"; exit 1; }
+          next="${latest%.*}.$(( ${latest##*.} + 1 ))"
+          echo "pip: $latest -> $next ($TARGET), pinned to $TAG / $WSI_TAG"
+
+          # Started as its own run (not a reusable workflow): PyPI trusted publishing
+          # is bound to the workflow file pypi-publish.yml.
+          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run pypi-publish.yml --ref "$GITHUB_REF_NAME" \
+            -f package_version="$next" -f xopat_tag="$TAG" -f wsi_tag="$WSI_TAG" -f target="$TARGET"
+          run_id=""
+          for _ in $(seq 1 30); do
+            sleep 10
+            run_id="$(gh run list --workflow pypi-publish.yml --event workflow_dispatch --created ">=$started" \
+                      --json databaseId,displayTitle \
+                      -q "[.[] | select(.displayTitle | contains(\"v$next \"))][0].databaseId // empty")"
+            [ -n "$run_id" ] && break
+          done
+          [ -n "$run_id" ] || { echo "::error::pypi-publish.yml did not start"; exit 1; }
+          echo "Waiting for https://github.com/$GITHUB_REPOSITORY/actions/runs/$run_id"
+          gh run watch "$run_id" --exit-status --interval 30
+
+          if [ "$TARGET" = "pypi" ]; then
+            {
+              printf '%s\n\n' "$body"
+              echo "<!-- pip-version:$next -->"
+              echo "pip: \`pip install xopat==$next\`"
+            } > notes.md
+            gh release edit "$TAG" --notes-file notes.md
+            echo "pip_version=$next" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Published xopat $next to $TARGET" >> "$GITHUB_STEP_SUMMARY"
+
+  link-back:
+    name: Link from the xOpat release
+    needs: [prepare, publish, pypi]
+    # Last, and only for a published release: the link never points at a draft.
+    # A failed pip publish does not withhold the installer links.
+    if: always() && needs.publish.result == 'success' && needs.prepare.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.XOPAT_RELEASE_TOKEN }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      LABEL: ${{ needs.prepare.outputs.label }}
+      PIP_VERSION: ${{ needs.pypi.outputs.pip_version }}
+    steps:
+      - run: |
+          set -euo pipefail
+          [ -n "$GH_TOKEN" ] || { echo "::error::Secret XOPAT_RELEASE_TOKEN is not set (needs Contents: write on $XOPAT_REPO)."; exit 1; }
+          base="https://github.com/$GITHUB_REPOSITORY/releases"
+          start='<!-- xopat-deploy:start -->'
+          end='<!-- xopat-deploy:end -->'
+
+          gh release view "$VERSION" -R "$XOPAT_REPO" --json body -q .body > body.md
+          {
+            # Everything except a block written by an earlier run.
+            awk -v s="$start" -v e="$end" '
+              index($0, s) { skip = 1 }
+              !skip        { print }
+              index($0, e) { skip = 0 }' body.md | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
+            echo
+            echo "$start"
+            echo "### Desktop installers and pip"
+            echo "- [Windows installer]($base/download/$TAG/xOpat-Installer-Windows-${LABEL}.exe) · [Linux installer]($base/download/$TAG/xOpat-Installer-Linux-${LABEL})"
+            echo "- Standalone binaries and checksums: [xopat-deploy $TAG]($base/tag/$TAG)"
+            [ -n "$PIP_VERSION" ] && echo "- Notebooks: \`pip install xopat==$PIP_VERSION\`"
+            echo "$end"
+          } > notes.md
+          gh release edit "$VERSION" -R "$XOPAT_REPO" --notes-file notes.md
+          echo "Linked https://github.com/$XOPAT_REPO/releases/tag/$VERSION -> $base/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

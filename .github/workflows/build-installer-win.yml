@@ -13,7 +13,7 @@ on:
         required: false
         type: string
       xopat_tag:
-        description: 'xOpat tag (e.g. xopat-v1.0.0). Leave empty for latest.'
+        description: 'xOpat tag (e.g. v3.2.1). Leave empty for latest.'
         required: false
         type: string
       ref:
@@ -47,7 +47,7 @@ jobs:
           if [ -n "${{ inputs.xopat_tag }}" ]; then
             echo "xopat=${{ inputs.xopat_tag }}" >> $GITHUB_OUTPUT
           else
-            echo "xopat=$(gh release list --json tagName -q '[.[] | select(.tagName | startswith("xopat-v"))][0].tagName')" >> $GITHUB_OUTPUT
+            echo "xopat=$(gh release list --exclude-drafts --exclude-pre-releases --limit 100 --json tagName -q '[.[] | select(.tagName | test("^v[0-9]"))][0].tagName')" >> $GITHUB_OUTPUT
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

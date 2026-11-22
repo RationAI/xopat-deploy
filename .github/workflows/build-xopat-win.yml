@@ -43,13 +43,10 @@ jobs:
           git checkout FETCH_HEAD
           echo "xOpat submodule now at $(git rev-parse HEAD) (ref: $XOPAT_REF)"
 
-      - name: Set up Node.js 18
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-
-      - name: Install pkg
-        run: npm install -g pkg
+          node-version: '22'
 
       - name: Run build script
         shell: pwsh
